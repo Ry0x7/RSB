@@ -1,0 +1,2 @@
+# RodentSignalBot
+Discord Signal bot
