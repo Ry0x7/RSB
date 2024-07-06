@@ -75,7 +75,7 @@ def format_embed(item, title):
 
     social_links = " | ".join(filter(None, [telegram_link, twitter_link, website_link]))
     if social_links:
-        social_links = f"Data for {social_links}"
+        social_links = f"SOCIALS = {social_links}"
 
     embed.add_field(
         name=f"{item['name']} [{item['symbol']}]",
