@@ -45,6 +45,9 @@ def get_time_since_creation(created_timestamp):
         return f"{time_diff.days} days ago"
 
 def format_embed(item, title):
+    if not item['address'].endswith('pump'):
+        return None
+
     embed = interactions.Embed(
         title=title,
         color=0x00ff00
@@ -101,8 +104,9 @@ def format_embed(item, title):
 
 async def send_embeds(channel, embeds):
     for embed in embeds:
-        await send_with_retry(channel, embed)
-        await asyncio.sleep(2)  # Wait for 2 seconds before sending the next embed
+        if embed:
+            await send_with_retry(channel, embed)
+            await asyncio.sleep(2)  # Wait for 2 seconds before sending the next embed
 
 async def send_with_retry(channel, embed, retries=5):
     for attempt in range(retries):
@@ -133,7 +137,7 @@ async def send_soaring_coins(channel):
     data = fetch_data(url)
     if data and data['data']['rank'] != last_soaring_data:
         last_soaring_data = data['data']['rank']
-        embeds = [format_embed(item, "🚀 Soaring Coin") for item in data['data']['rank']]
+        embeds = [format_embed(item, "🚀 Soaring Coin") for item in data['data']['rank'] if item['address'].endswith('pump')]
         await send_embeds(channel, embeds)
 
 async def send_new_created_coins(channel):
@@ -151,7 +155,7 @@ async def send_new_created_coins(channel):
     data = fetch_data(url)
     if data and data['data']['rank'] != last_new_data:
         last_new_data = data['data']['rank']
-        embeds = [format_embed(item, "🌟 Newly Created Coin") for item in data['data']['rank']]
+        embeds = [format_embed(item, "🌟 Newly Created Coin") for item in data['data']['rank'] if item['address'].endswith('pump')]
         await send_embeds(channel, embeds)
 
 def build_query_url(base_url, params):
@@ -213,11 +217,11 @@ async def stop(ctx):
 async def loop_send_soaring_coins(channel):
     while True:
         await send_soaring_coins(channel)
-        await asyncio.sleep(5)  # Wait for 10 seconds before sending the next update
+        await asyncio.sleep(5)  # Wait for 5 seconds before sending the next update
 
 async def loop_send_new_created_coins(channel):
     while True:
         await send_new_created_coins(channel)
-        await asyncio.sleep(5)  # Wait for 10 seconds before sending the next update
+        await asyncio.sleep(5)  # Wait for 5 seconds before sending the next update
 
 bot.start()
