@@ -99,16 +99,29 @@ def format_embed(item, title, updated=False):
         embed_title += " (Duplicated Coin)"
 
     reply = fetch_replies(item['address'])
+    cto_info = ""
     if reply:
         embed_title += " (Controlled by CTO?)"
+        cto_telegram = ""
         if "OFFICIAL CTO IS" in reply['text']:
             parts = reply['text'].split("OFFICIAL CTO IS")
+            if len(parts) > 1:
+                cto_telegram = parts[1].split()[0]
         elif "CTO IS HERE" in reply['text']:
             parts = reply['text'].split("CTO IS HERE")
+            if len(parts) > 1:
+                cto_telegram = parts[1].split()[0]
         elif "CTO" in reply['text']:
             parts = reply['text'].split("CTO")
-        pumpfunlink = f"https://pump.fun/{item['address']}"
+            if len(parts) > 1:
+                cto_telegram = parts[1].split()[0]
+        pumpfun_profile = f"https://pump.fun/profile/{reply['user']}"
         time_since_message = get_time_since_message(reply['timestamp'])
+        cto_info = (
+            f"**CTO Telegram (Verify First):** {cto_telegram}\n"
+            f"**CTO Lead:** [Profile]({pumpfun_profile})\n"
+            f"**Sent last:** {time_since_message}\n"
+        )
 
     embed = interactions.Embed(
         title=embed_title,
@@ -155,14 +168,9 @@ def format_embed(item, title, updated=False):
 
     if reply:
         field_value += (
-            f"**[PumpFun]**({pumpfunlink})\n"
-            f"**Message:** {time_since_message}\n"
+            f"---\n"
+            f"{cto_info}"
         )
-
-    embed = interactions.Embed(
-        title=f"{item['name']} [{item['symbol']}]",
-        color=0x00ff00
-    )
 
     if len(field_value) > 1024:
         logging.warning(f"Field value for {item['address']} exceeded 1024 characters. Truncating.")
@@ -180,7 +188,13 @@ def format_embed(item, title, updated=False):
         f"For Business Inquiries: https://t.me/j3rrycr3dits\n"
     )
 
-    return embed, donation_message
+    embed.add_field(
+        name="Support",
+        value=donation_message,
+        inline=False
+    )
+
+    return embed
 
 async def send_or_update_embed(channel, item, title, sent_messages):
     updated = item['address'] in sent_messages
@@ -337,7 +351,7 @@ async def stop(ctx):
         for task_type in ["soaring", "new"]:
             if ctx.channel.id in running_tasks[task_type]:
                 await running_tasks[task_type][ctx.channel.id].close()
-                del running_tasks[task_type][ctx.channel.id] 
+                del running_tasks[task_type][ctx.channel.id]
                 stopped_any = True
         if stopped_any:
             await ctx.send('Stopped sending token information. ❌', ephemeral=True)
