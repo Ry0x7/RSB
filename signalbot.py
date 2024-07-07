@@ -123,8 +123,10 @@ async def send_or_update_embed(channel, item, title):
             if message is not None:
                 await message.edit(embeds=[embed])
             else:
-                raise interactions.errors.NotFound
-        except (interactions.errors.NotFound, interactions.errors.HTTPException):
+                # If the message is not found, send a new one
+                message = await channel.send(embeds=[embed])
+                sent_messages[item['address']] = message.id
+        except interactions.errors.HTTPException:
             message = await channel.send(embeds=[embed])
             sent_messages[item['address']] = message.id
     else:
