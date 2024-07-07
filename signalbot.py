@@ -99,8 +99,8 @@ def format_embed(item, title, updated=False):
             f"📈 **Bonding Curve Progress:** `{progress:.2f}%`\n"
             f"---\n"
             f"```{item['address']}```\n"
-            f"[🔍 PHOTON: {item['address']}]({photon_link})\n"
-            f"[📊 BULLX: {item['address']}]({bullx_link})\n"
+            f"[PHOTON:   {item['address']}]({photon_link})\n"
+            f"[BULLX:   {item['address']}]({bullx_link})\n"
             f"{social_links}\n"
         ),
         inline=False
@@ -135,8 +135,8 @@ async def send_soaring_coins(channel):
         'orderby': 'created_timestamp',
         'direction': 'desc',
         'soaring': 'true',
-        'min_marketcap': '5000',
-        'max_marketcap': '13000',
+        'min_marketcap': '4000',
+        'max_marketcap': '25000',
         'min_holder_count': '20',
         'min_volume': '1000',
     }
@@ -154,8 +154,7 @@ async def send_new_created_coins(channel):
         'orderby': 'created_timestamp',
         'direction': 'desc',
         'new_creation': 'true',
-        'min_marketcap': '4000',
-        'max_marketcap': '10000',
+        'max_marketcap': '13000',
         'min_holder_count': '15',
     }
     url = build_query_url(BASE_URL, params)
