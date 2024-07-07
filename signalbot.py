@@ -127,7 +127,7 @@ async def send_or_update_embed(channel, item, title, sent_messages):
         try:
             message = await channel.fetch_message(message_id)
             if message is not None:
-                await message.edit(embeds=[embed])
+                await edit_message_with_retry(message, embed)
             else:
                 del sent_messages[item['address']]
                 message = await channel.send(embeds=[embed])
@@ -140,6 +140,19 @@ async def send_or_update_embed(channel, item, title, sent_messages):
         message = await channel.send(embeds=[embed])
         sent_messages[item['address']] = message.id
 
+async def edit_message_with_retry(message, embed, retries=5):
+    for attempt in range(retries):
+        try:
+            await message.edit(embeds=[embed])
+            return
+        except RuntimeError as e:
+            if 'Attempted to lock a bucket that is already locked' in str(e):
+                wait_time = (2 ** attempt) + random.uniform(0, 1)  # Exponential backoff
+                await asyncio.sleep(wait_time)
+            else:
+                raise e
+    logging.error("Failed to edit message after multiple retries")
+
 async def delete_old_messages(channel, valid_addresses, sent_messages):
     for address, message_id in list(sent_messages.items()):
         if address not in valid_addresses:
@@ -150,6 +163,11 @@ async def delete_old_messages(channel, valid_addresses, sent_messages):
                 del sent_messages[address]
             except interactions.errors.NotFound:
                 del sent_messages[address]
+            except interactions.errors.HTTPException as e:
+                if e.response.status == 429:
+                    retry_after = e.response.headers.get('Retry-After')
+                    await asyncio.sleep(float(retry_after))
+                    await delete_old_messages(channel, valid_addresses, sent_messages)
 
 async def send_soaring_coins(channel):
     global last_soaring_data
