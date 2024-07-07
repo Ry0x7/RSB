@@ -4,7 +4,6 @@ import interactions
 import aiojobs
 from datetime import datetime, timedelta
 import asyncio
-import random
 import dotenv
 import os
 
@@ -43,11 +42,10 @@ def fetch_data(url):
 def fetch_replies(token_address):
     url = f"{REPLY_API_BASE_URL}{token_address}"
     response = fetch_data(url)
-    if response:
-        replies = response.get('data', [])
+    if response and isinstance(response, list):
         latest_reply = None
         latest_timestamp = 0
-        for reply in replies:
+        for reply in response:
             if any(keyword in reply['text'] for keyword in ["OFFICIAL CTO IS", "DEX ADS GETTING PAID BY CTO", "CTO IS HERE", "CTO"]):
                 if reply['timestamp'] > latest_timestamp:
                     latest_reply = reply
@@ -154,10 +152,10 @@ def format_embed(item, title, updated=False):
         f"{social_links}\n"
         f"👤 **[Creator Address]({solscan_dev_link})** (Sol Bal: `{creator_balance}`)\n"
         f"-----------------------------\n"
-        f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}` 📊 **5-Min Volume:** `${volume_5m}`\n"
+        f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}`\n"
         f"👥 **Holders:** `{holder_count}` 💬 **Replies** `{reply_count}` 🏆 **Top 10** `{top_10_holder_rate:.2f}%`\n"
-        f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'}🛠️ **Dev Sold?:** {dev_sold}\n"
-        f"📈 **Bonding Curve Progress:** `{progress:.2f}%`\n"
+        f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'} | 🛠️ **Dev Sold?:** {dev_sold}\n"
+        f"📈 **Bonding Curve Progress:** `{progress:.2f}%`  📊 **5-Min Volume:** `${volume_5m}`\n"
         f"------------------------------\n"
         f"```{item['address']}```\n"
         f"[PHOTON: {item['address']}]({photon_link})\n\n"
@@ -232,13 +230,13 @@ async def send_soaring_coins(channel):
     try:
         params = {
             'limit': '50',
-            'orderby': 'created_timestamp',
+            'orderby': 'usd_market_cap',
             'direction': 'desc',
             'soaring': 'true',
             'min_marketcap': '5000',
-            'max_marketcap': '25000',
+            'max_marketcap': '30000',
             'min_holder_count': '25',
-            'min_volume': '1000',
+            'min_volume': '2000',
         }
         url = build_query_url(BASE_URL, params)
         data = fetch_data(url)
@@ -257,11 +255,11 @@ async def send_new_created_coins(channel):
     try:
         params = {
             'limit': '50',
-            'orderby': 'created_timestamp',
+            'orderby': 'usd_market_cap',
             'direction': 'desc',
             'new_creation': 'true',
             'max_marketcap': '10000',
-            'min_holder_count': '15',
+            'min_holder_count': '20',
         }
         url = build_query_url(BASE_URL, params)
         data = fetch_data(url)
