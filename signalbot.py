@@ -9,13 +9,13 @@ import random
 # Correct token and default_scope initialization
 bot = interactions.Client(
     token="MTI1OTA5MjEwNzk0NDAwNTcwNA.GdiQza.BpS494-GNqNLsKkHAUvVWo6MM0UhABVmAf40Jk",
-    default_scope=1259094394397790231
 )
 
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
 
-last_soaring_data = {}
-last_new_data = {}
+last_soaring_data = None
+last_new_data = None
+owner_username = "chakazzz"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -85,49 +85,30 @@ def format_embed(item, title, updated=False):
     if social_links:
         social_links = f"SOCIALS = {social_links}"
 
-    embed_value = (
-        f"---\n"
-        f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}` 📊 **5-Min Volume:** `${volume_5m}`\n"
-        f"👥 **Holders:** {holder_count}\n"
-        f"💬 **Reply Count:** {reply_count}\n"
-        f"🏆 **Top 10 Holders Rate:** `{top_10_holder_rate:.2f}%`\n"
-        f"👤 **[Creator Address]({solscan_dev_link})** (Sol Balance: `{creator_balance}`)\n"
-        f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'}\n"
-        f"🛠️ **Dev Sold?:** {dev_sold}\n"
-        f"📈 **Bonding Curve Progress:** `{progress:.2f}%`\n"
-        f"---\n"
-        f"```{item['address']}```\n"
-        f"[PHOTON: {item['address']}]({photon_link})\n"
-        f"[BULLX: {item['address']}]({bullx_link})\n"
-        f"{social_links}\n\n"
-        f"Donations Accepted/Encouraged\n"
-        f"`Rodent: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n"
-        f"For Business Inquiries: https://t.me/j3rrycr3dits\n"
-    )
-
-    # Truncate embed_value if it exceeds 1024 characters
-    if len(embed_value) > 1024:
-        embed_value = embed_value[:1021] + "..."
-
     embed.add_field(
         name=f"{item['name']} [{item['symbol']}]",
-        value=embed_value,
+        value=(
+            f"---\n"
+            f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}` 📊 **5-Min Volume:** `${volume_5m}`\n"
+            f"👥 **Holders:** {holder_count}\n"
+            f"💬 **Reply Count:** {reply_count}\n"
+            f"🏆 **Top 10 Holders Rate:** `{top_10_holder_rate:.2f}%`\n"
+            f"👤 **[Creator Address]({solscan_dev_link})** (Sol Balance: `{creator_balance}`)\n"
+            f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'}\n"
+            f"🛠️ **Dev Sold?:** {dev_sold}\n"
+            f"📈 **Bonding Curve Progress:** `{progress:.2f}%`\n"
+            f"---\n"
+            f"```{item['address']}```\n"
+            f"[PHOTON: {item['address']}]({photon_link})\n"
+            f"[BULLX: {item['address']}]({bullx_link})\n"
+            f"{social_links}\n\n"
+            f"Donations Accepted/Encouraged\n"
+            f"`Rodent: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n"
+            f"For Business Inquiries: https://t.me/j3rrycr3dits\n"
+        ),
         inline=False
     )
     return embed
-
-async def send_with_retry(channel, embed, retries=5):
-    for attempt in range(retries):
-        try:
-            message = await channel.send(embeds=[embed])
-            return message
-        except RuntimeError as e:
-            if 'Attempted to lock a bucket that is already locked' in str(e):
-                wait_time = (2 ** attempt) + random.uniform(0, 1)  # Exponential backoff
-                await asyncio.sleep(wait_time)
-            else:
-                raise e
-    logging.error("Failed to send embed after multiple retries")
 
 async def send_or_update_embed(channel, item, title):
     updated = item['address'] in sent_messages
@@ -142,14 +123,12 @@ async def send_or_update_embed(channel, item, title):
             if message is not None:
                 await message.edit(embeds=[embed])
             else:
-                # If the message is not found, send a new one
-                message = await send_with_retry(channel, embed)
-                sent_messages[item['address']] = message.id
-        except interactions.errors.HTTPException:
-            message = await send_with_retry(channel, embed)
+                raise interactions.errors.NotFound
+        except (interactions.errors.NotFound, interactions.errors.HTTPException):
+            message = await channel.send(embeds=[embed])
             sent_messages[item['address']] = message.id
     else:
-        message = await send_with_retry(channel, embed)
+        message = await channel.send(embeds=[embed])
         sent_messages[item['address']] = message.id
 
 async def send_soaring_coins(channel):
@@ -166,10 +145,10 @@ async def send_soaring_coins(channel):
     }
     url = build_query_url(BASE_URL, params)
     data = fetch_data(url)
-    if data:
+    if data and data['data']['rank'] != last_soaring_data:
+        last_soaring_data = data['data']['rank']
         for item in data['data']['rank']:
             await send_or_update_embed(channel, item, "🚀 Soaring Coin")
-        last_soaring_data = {item['address']: item for item in data['data']['rank']}
 
 async def send_new_created_coins(channel):
     global last_new_data
@@ -178,16 +157,15 @@ async def send_new_created_coins(channel):
         'orderby': 'created_timestamp',
         'direction': 'desc',
         'new_creation': 'true',
-        'min_swap':'1',
         'max_marketcap': '10000',
         'min_holder_count': '15',
     }
     url = build_query_url(BASE_URL, params)
     data = fetch_data(url)
-    if data:
+    if data and data['data']['rank'] != last_new_data:
+        last_new_data = data['data']['rank']
         for item in data['data']['rank']:
             await send_or_update_embed(channel, item, "🌟 Newly Created Coin")
-        last_new_data = {item['address']: item for item in data['data']['rank']}
 
 def build_query_url(base_url, params):
     query_url = f"{base_url}?"
@@ -198,18 +176,22 @@ def build_query_url(base_url, params):
 @bot.event
 async def on_ready():
     logging.info(f'Bot logged in as {bot.me.name}')
+    asyncio.create_task(monitor_tasks())  # Start the monitoring task
+
+async def admin_command(ctx):
+    guild = await bot.fetch_guild(ctx.guild_id)
+    member = await guild.fetch_member(ctx.author.id)
+    return ctx.author.username == owner_username or member.permissions.has(interactions.Permissions.MANAGE_GUILD)
 
 @interactions.slash_command(
     name="soaring",
-    description="Start sending soaring coin information."
+    description="Start sending soaring coin information.",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False
 )
 async def soaring(ctx):
-    logging.info(f"soaring command invoked by user: {ctx.author.username}")
-    if ctx.author.username != "chakazzz":
+    if not await admin_command(ctx):
         await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-        return
-    if ctx.channel.id in running_tasks:
-        await ctx.send('The bot is already running in this channel. ⏳', ephemeral=True)
         return
     await ctx.send('Grabbing Soaring Coins for the BAGSS! 👜', ephemeral=True)
     scheduler = await aiojobs.create_scheduler()
@@ -219,15 +201,13 @@ async def soaring(ctx):
 
 @interactions.slash_command(
     name="new",
-    description="Start sending newly created coin information."
+    description="Start sending newly created coin information.",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False
 )
 async def new(ctx):
-    logging.info(f"new command invoked by user: {ctx.author.username}")
-    if ctx.author.username != "chakazzz":
+    if not await admin_command(ctx):
         await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-        return
-    if ctx.channel.id in running_tasks:
-        await ctx.send('The bot is already running in this channel. ⏳', ephemeral=True)
         return
     await ctx.send('Grabbing Newly Created Coins for the BAGSS! 👜', ephemeral=True)
     scheduler = await aiojobs.create_scheduler()
@@ -237,19 +217,38 @@ async def new(ctx):
 
 @interactions.slash_command(
     name="stop",
-    description="Stop sending token information."
+    description="Stop sending token information.",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False
 )
 async def stop(ctx):
-    logging.info(f"stop command invoked by user: {ctx.author.username}")
-    if ctx.author.username != "chakazzz":
+    if not await admin_command(ctx):
         await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
         return
     if ctx.channel.id in running_tasks:
-        await running_tasks[ctx.channel.id].close()
+        running_tasks[ctx.channel.id].close()
         del running_tasks[ctx.channel.id]
         await ctx.send('Stopped sending token information. ❌', ephemeral=True)
     else:
         await ctx.send('No active tasks to stop. ❌', ephemeral=True)
+
+@interactions.slash_command(
+    name="reboot",
+    description="Reboot the coin information sending loops.",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False
+)
+async def reboot(ctx):
+    if not await admin_command(ctx):
+        await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+        return
+    if ctx.channel.id in running_tasks:
+        running_tasks[ctx.channel.id].close()
+        del running_tasks[ctx.channel.id]
+    scheduler = await aiojobs.create_scheduler()
+    task = await scheduler.spawn(loop_send_soaring_coins(ctx.channel))
+    running_tasks[ctx.channel.id] = task
+    await ctx.send('Rebooted the coin information sending loops. 🔄', ephemeral=True)
 
 async def loop_send_soaring_coins(channel):
     while True:
@@ -260,5 +259,16 @@ async def loop_send_new_created_coins(channel):
     while True:
         await send_new_created_coins(channel)
         await asyncio.sleep(4)  # Wait for 4 seconds before sending the next update
+
+async def monitor_tasks():
+    while True:
+        for channel_id, task in list(running_tasks.items()):
+            if task.done():
+                logging.warning(f"Task for channel {channel_id} has stopped. Restarting...")
+                channel = await bot.fetch_channel(channel_id)
+                scheduler = await aiojobs.create_scheduler()
+                new_task = await scheduler.spawn(loop_send_soaring_coins(channel))
+                running_tasks[channel_id] = new_task
+        await asyncio.sleep(60)  # Check every minute
 
 bot.start()
