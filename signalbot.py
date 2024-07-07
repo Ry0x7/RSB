@@ -102,7 +102,7 @@ def format_embed(item, title, updated=False):
 
     reply = fetch_replies(item['address'])
     if reply:
-        embed_title += " (Controlled by CTO)"
+        embed_title += " (Controlled by CTO?)"
         cto_telegram = ""
         if "OFFICIAL CTO IS" in reply['text']:
             parts = reply['text'].split("OFFICIAL CTO IS")
@@ -151,28 +151,25 @@ def format_embed(item, title, updated=False):
         social_links = f"SOCIALS = {social_links}"
 
     field_value = (
-        f"---\n"
-        f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}` 📊 **5-Min Volume:** `${volume_5m}`\n"
-        f"👥 **Holders:** {holder_count}\n"
-        f"💬 **Reply Count:** {reply_count}\n"
-        f"🏆 **Top 10 Holders Rate:** `{top_10_holder_rate:.2f}%`\n"
-        f"👤 **[Creator Address]({solscan_dev_link})** (Sol Balance: `{creator_balance}`)\n"
-        f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'}\n"
-        f"🛠️ **Dev Sold?:** {dev_sold}\n"
-        f"📈 **Bonding Curve Progress:** `{progress:.2f}%`\n"
-        f"---\n"
-        f"```{item['address']}```\n"
-        f"[PHOTON: {item['address']}]({photon_link})\n"
-        f"[BULLX: {item['address']}]({bullx_link})\n"
         f"{social_links}\n"
+        f"👤 **[Creator Address]({solscan_dev_link})** (Sol Bal: `{creator_balance}`)\n"
+        f"-----------------------------\n"
+        f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}` 📊 **5-Min Volume:** `${volume_5m}`\n"
+        f"👥 **Holders:** `{holder_count}` 💬 **Replies** `{reply_count}` 🏆 **Top 10** `{top_10_holder_rate:.2f}%`\n"
+        f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'}🛠️ **Dev Sold?:** {dev_sold}\n"
+        f"📈 **Bonding Curve Progress:** `{progress:.2f}%`\n"
+        f"------------------------------\n"
+        f"```{item['address']}```\n"
+        f"[PHOTON: {item['address']}]({photon_link})\n\n"
+        f"[BULLX: {item['address']}]({bullx_link})\n"
     )
 
     if reply:
         field_value += (
             f"---\n"
-            f"**CTO Telegram:** {cto_telegram}\n"
-            f"**Pump.fun Profile:** [Profile]({pumpfun_profile})\n"
-            f"**Time Since Message:** {time_since_message}\n"
+            f"**CTO Telegram(Verify First):** {cto_telegram}\n"
+            f"**CTO Lead:** [Profile]({pumpfun_profile})\n"
+            f"**Sent last:** {time_since_message}\n"
         )
 
     field_value += (
