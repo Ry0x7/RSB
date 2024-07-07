@@ -8,7 +8,7 @@ import random
 
 # Correct token and default_scope initialization
 bot = interactions.Client(
-    token="MTI1OTA5MjEwNzk0NDAwNTcwNA.GdiQza.BpS494-GNqNLsKkHAUvVWo6MM0UhABVmAf40Jk",
+    token="YOUR_BOT_TOKEN",
     default_scope=1259094394397790231
 )
 
@@ -199,9 +199,8 @@ async def on_ready():
 
 async def admin_command(ctx):
     member = await ctx.guild.fetch_member(ctx.author.id)
-    if member.permissions.has(interactions.Permissions.MANAGE_GUILD):
-        return True
-    return False
+    permissions = await ctx.guild.fetch_roles()
+    return any(role.permissions.has(interactions.Permissions.MANAGE_GUILD) for role in permissions)
 
 @interactions.slash_command(
     name="soaring",
