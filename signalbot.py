@@ -179,7 +179,7 @@ async def send_new_created_coins(channel):
         'direction': 'desc',
         'new_creation': 'true',
         'max_marketcap': '10000',
-        'min_holder_count': '20',
+        'min_holder_count': '15',
     }
     url = build_query_url(BASE_URL, params)
     data = fetch_data(url)
