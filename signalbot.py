@@ -175,9 +175,9 @@ def format_embed(item, title, updated=False):
     if len(field_value) > 1024:
         logging.warning(f"Field value for {item['address']} exceeded 1024 characters. Truncating.")
         field_value = field_value[:1021] + "..."
-
+        
     embed.add_field(
-        name="Coin Information",
+        name=f"{item['name']} ({item['symbol']})",
         value=field_value,
         inline=False
     )
