@@ -14,7 +14,6 @@ dotenv.load_dotenv()
 bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
 
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
-PHOTON_API_URL = 'https://photon-sol.tinyastro.io/api/memescope/search'
 
 last_soaring_data = None
 last_new_data = None
@@ -48,12 +47,16 @@ def get_time_since_creation(created_timestamp):
     elif time_diff < timedelta(hours=1):
         return f"{time_diff.seconds // 60} minutes ago"
     elif time_diff < timedelta(days=1):
-        return f"{time_diff.days} days ago"
+        return f"{time_diff.seconds // 3600} hours ago"
     else:
         return f"{time_diff.days} days ago"
 
 def format_embed(item, title, updated=False):
     if not item['address'].endswith('pump'):
+        return None
+
+    top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
+    if top_10_holder_rate >= 35:
         return None
 
     embed_title = title
@@ -71,7 +74,6 @@ def format_embed(item, title, updated=False):
     solscan_token_link = f"https://solscan.io/account/{item['address']}"
     dex_paid = item.get('dexscr_ad', 0) == 1
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
-    top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
     creator_balance = f"{float(item.get('creator_balance', 0.0) or 0.0):.2f}"
     holder_count = item.get('holder_count', 'N/A')
@@ -122,18 +124,6 @@ def format_embed(item, title, updated=False):
         inline=False
     )
     return embed
-
-async def filter_coins(coins):
-    filtered_coins = []
-    for coin in coins:
-        response = requests.get(f"{PHOTON_API_URL}?address={coin['address']}")
-        if response.status_code == 200:
-            coin_data = response.json()
-            snipers_count = coin_data.get("snipers_count", 0)
-            holders_below_35 = coin_data.get("holders_below_35", 100)
-            if snipers_count <= 10 and holders_below_35 >= 35:
-                filtered_coins.append(coin)
-    return filtered_coins
 
 async def send_or_update_embed(channel, item, title, sent_messages):
     updated = item['address'] in sent_messages
@@ -211,8 +201,7 @@ async def send_soaring_coins(channel):
         if data and data['data']['rank'] != last_soaring_data:
             last_soaring_data = data['data']['rank']
             valid_addresses = {item['address'] for item in data['data']['rank']}
-            filtered_coins = await filter_coins(data['data']['rank'])
-            for item in filtered_coins:
+            for item in data['data']['rank']:
                 await send_or_update_embed(channel, item, "🚀 Soaring Coin", sent_soaring_messages)
             await delete_old_messages(channel, valid_addresses, sent_soaring_messages)
     except Exception as e:
@@ -234,8 +223,7 @@ async def send_new_created_coins(channel):
         if data and data['data']['rank'] != last_new_data:
             last_new_data = data['data']['rank']
             valid_addresses = {item['address'] for item in data['data']['rank']}
-            filtered_coins = await filter_coins(data['data']['rank'])
-            for item in filtered_coins:
+            for item in data['data']['rank']:
                 await send_or_update_embed(channel, item, "🌟 Newly Created Coin", sent_new_messages)
             await delete_old_messages(channel, valid_addresses, sent_new_messages)
     except Exception as e:
