@@ -219,7 +219,7 @@ async def stop(ctx):
         await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
         return
     if ctx.channel.id in running_tasks:
-        running_tasks[ctx.channel.id].cancel()
+        await running_tasks[ctx.channel.id].close()
         del running_tasks[ctx.channel.id]
         await ctx.send('Stopped sending token information. ❌', ephemeral=True)
     else:
@@ -228,11 +228,11 @@ async def stop(ctx):
 async def loop_send_soaring_coins(channel):
     while True:
         await send_soaring_coins(channel)
-        await asyncio.sleep(1)  # Wait for 5 seconds before sending the next update
+        await asyncio.sleep(3)  # Wait for 5 seconds before sending the next update
 
 async def loop_send_new_created_coins(channel):
     while True:
         await send_new_created_coins(channel)
-        await asyncio.sleep(1)  # Wait for 5 seconds before sending the next update
+        await asyncio.sleep(3)  # Wait for 5 seconds before sending the next update
 
 bot.start()
