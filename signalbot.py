@@ -113,38 +113,54 @@ def format_embed(item, title, updated=False):
     return embed
 
 async def send_or_update_embed(channel, item, title):
-    if item['address'] in sent_coins:
-        updated = item['address'] in sent_messages
-        embed = format_embed(item, title, updated)
-        if not embed:
-            return
-        
-        if updated:
-            message_id = sent_messages[item['address']]
-            try:
-                message = await channel.fetch_message(message_id)
-                if message is not None:
-                    await message.edit(embeds=[embed])
-                else:
-                    del sent_messages[item['address']]
-                    message = await channel.send(embeds=[embed])
-                    sent_messages[item['address']] = message.id
-            except interactions.errors.NotFound:
-                del sent_messages[item['address']]
-                message = await channel.send(embeds=[embed])
-                sent_messages[item['address']] = message.id
-        else:
-            message = await channel.send(embeds=[embed])
-            sent_messages[item['address']] = message.id
-    else:
-        embed = format_embed(item, title, False)
-        if embed:
+    embed = format_embed(item, title, updated=item['address'] in sent_messages)
+    if not embed:
+        return
+    
+    if item['address'] in sent_messages:
+        message_id = sent_messages[item['address']]
+        try:
+            message = await channel.fetch_message(message_id)
+            if message is not None:
+                await message.edit(embeds=[embed])
+            else:
+                raise interactions.errors.NotFound
+        except interactions.errors.NotFound:
+            del sent_messages[item['address']]
+            sent_coins.discard(item['address'])
             message = await channel.send(embeds=[embed])
             sent_messages[item['address']] = message.id
             sent_coins.add(item['address'])
+    else:
+        message = await channel.send(embeds=[embed])
+        sent_messages[item['address']] = message.id
+        sent_coins.add(item['address'])
+
+async def delete_removed_coins(channel, current_coins):
+    for address in list(sent_coins):
+        if address not in current_coins:
+            try:
+                message_id = sent_messages[address]
+                message = await channel.fetch_message(message_id)
+                if message is not None:
+                    await message.delete()
+                del sent_messages[address]
+                sent_coins.remove(address)
+            except interactions.errors.NotFound:
+                del sent_messages[address]
+                sent_coins.remove(address)
+
+async def send_coins(channel, params, title):
+    url = build_query_url(BASE_URL, params)
+    data = fetch_data(url)
+    current_coins = set()
+    if data:
+        for item in data['data']['rank']:
+            current_coins.add(item['address'])
+            await send_or_update_embed(channel, item, title)
+    await delete_removed_coins(channel, current_coins)
 
 async def send_soaring_coins(channel):
-    global last_soaring_data
     params = {
         'limit': '50',
         'orderby': 'created_timestamp',
@@ -155,15 +171,9 @@ async def send_soaring_coins(channel):
         'min_holder_count': '25',
         'min_volume': '1000',
     }
-    url = build_query_url(BASE_URL, params)
-    data = fetch_data(url)
-    if data and data['data']['rank'] != last_soaring_data:
-        last_soaring_data = data['data']['rank']
-        for item in data['data']['rank']:
-            await send_or_update_embed(channel, item, "🚀 Soaring Coin")
+    await send_coins(channel, params, "🚀 Soaring Coin")
 
 async def send_new_created_coins(channel):
-    global last_new_data
     params = {
         'limit': '50',
         'orderby': 'created_timestamp',
@@ -172,12 +182,7 @@ async def send_new_created_coins(channel):
         'max_marketcap': '10000',
         'min_holder_count': '15',
     }
-    url = build_query_url(BASE_URL, params)
-    data = fetch_data(url)
-    if data and data['data']['rank'] != last_new_data:
-        last_new_data = data['data']['rank']
-        for item in data['data']['rank']:
-            await send_or_update_embed(channel, item, "🌟 Newly Created Coin")
+    await send_coins(channel, params, "🌟 Newly Created Coin")
 
 def build_query_url(base_url, params):
     query_url = f"{base_url}?"
@@ -188,12 +193,6 @@ def build_query_url(base_url, params):
 @bot.event
 async def on_ready():
     logging.info(f'Bot logged in as {bot.me.name}')
-    asyncio.create_task(monitor_tasks())  # Start the monitoring task
-
-async def admin_command(ctx):
-    guild = await bot.fetch_guild(ctx.guild_id)
-    member = await guild.fetch_member(ctx.author.id)
-    return ctx.author.username == owner_username or member.permissions.has(interactions.Permissions.MANAGE_GUILD)
 
 @interactions.slash_command(
     name="soaring",
@@ -283,4 +282,5 @@ async def monitor_tasks():
                 running_tasks[channel_id] = new_task
         await asyncio.sleep(60)  # Check every minute
 
+asyncio.create_task(monitor_tasks())
 bot.start()
