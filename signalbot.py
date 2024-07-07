@@ -14,6 +14,7 @@ dotenv.load_dotenv()
 bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
 
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
+PHOTON_API_URL = 'https://photon-sol.tinyastro.io/api/memescope/search'
 
 last_soaring_data = None
 last_new_data = None
@@ -47,7 +48,7 @@ def get_time_since_creation(created_timestamp):
     elif time_diff < timedelta(hours=1):
         return f"{time_diff.seconds // 60} minutes ago"
     elif time_diff < timedelta(days=1):
-        return f"{time_diff.seconds // 3600} hours ago"
+        return f"{time_diff.days} days ago"
     else:
         return f"{time_diff.days} days ago"
 
@@ -121,6 +122,18 @@ def format_embed(item, title, updated=False):
         inline=False
     )
     return embed
+
+async def filter_coins(coins):
+    filtered_coins = []
+    for coin in coins:
+        response = requests.get(f"{PHOTON_API_URL}?address={coin['address']}")
+        if response.status_code == 200:
+            coin_data = response.json()
+            snipers_count = coin_data.get("snipers_count", 0)
+            holders_below_35 = coin_data.get("holders_below_35", 100)
+            if snipers_count <= 10 and holders_below_35 >= 35:
+                filtered_coins.append(coin)
+    return filtered_coins
 
 async def send_or_update_embed(channel, item, title, sent_messages):
     updated = item['address'] in sent_messages
@@ -198,7 +211,8 @@ async def send_soaring_coins(channel):
         if data and data['data']['rank'] != last_soaring_data:
             last_soaring_data = data['data']['rank']
             valid_addresses = {item['address'] for item in data['data']['rank']}
-            for item in data['data']['rank']:
+            filtered_coins = await filter_coins(data['data']['rank'])
+            for item in filtered_coins:
                 await send_or_update_embed(channel, item, "🚀 Soaring Coin", sent_soaring_messages)
             await delete_old_messages(channel, valid_addresses, sent_soaring_messages)
     except Exception as e:
@@ -212,7 +226,7 @@ async def send_new_created_coins(channel):
             'orderby': 'created_timestamp',
             'direction': 'desc',
             'new_creation': 'true',
-            'max_marketcap': '13000',
+            'max_marketcap': '10000',
             'min_holder_count': '15',
         }
         url = build_query_url(BASE_URL, params)
@@ -220,7 +234,8 @@ async def send_new_created_coins(channel):
         if data and data['data']['rank'] != last_new_data:
             last_new_data = data['data']['rank']
             valid_addresses = {item['address'] for item in data['data']['rank']}
-            for item in data['data']['rank']:
+            filtered_coins = await filter_coins(data['data']['rank'])
+            for item in filtered_coins:
                 await send_or_update_embed(channel, item, "🌟 Newly Created Coin", sent_new_messages)
             await delete_old_messages(channel, valid_addresses, sent_new_messages)
     except Exception as e:
