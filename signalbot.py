@@ -22,7 +22,10 @@ owner_username = "chakazzz"
 logging.basicConfig(level=logging.INFO)
 
 # Dictionary to keep track of running tasks and sent messages
-running_tasks = {}
+running_tasks = {
+    "soaring": {},
+    "new": {}
+}
 sent_soaring_messages = {}
 sent_new_messages = {}
 
@@ -217,7 +220,7 @@ async def soaring(ctx):
     await ctx.send('Grabbing Soaring Coins for the BAGSS! 👜', ephemeral=True)
     scheduler = await aiojobs.create_scheduler()
     task = await scheduler.spawn(loop_send_soaring_coins(ctx.channel))
-    running_tasks[ctx.channel.id] = task
+    running_tasks["soaring"][ctx.channel.id] = task
     await ctx.send('Started sending soaring coin information. 📈', ephemeral=True)
 
 @interactions.slash_command(
@@ -233,7 +236,7 @@ async def new(ctx):
     await ctx.send('Grabbing Newly Created Coins for the BAGSS! 👜', ephemeral=True)
     scheduler = await aiojobs.create_scheduler()
     task = await scheduler.spawn(loop_send_new_created_coins(ctx.channel))
-    running_tasks[ctx.channel.id] = task
+    running_tasks["new"][ctx.channel.id] = task
     await ctx.send('Started sending newly created coin information. 📈', ephemeral=True)
 
 @interactions.slash_command(
@@ -246,9 +249,13 @@ async def stop(ctx):
     if not await admin_command(ctx):
         await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
         return
-    if ctx.channel.id in running_tasks:
-        await running_tasks[ctx.channel.id].close()
-        del running_tasks[ctx.channel.id]
+    stopped_any = False
+    for task_type in ["soaring", "new"]:
+        if ctx.channel.id in running_tasks[task_type]:
+            await running_tasks[task_type][ctx.channel.id].close()
+            del running_tasks[task_type][ctx.channel.id]
+            stopped_any = True
+    if stopped_any:
         await ctx.send('Stopped sending token information. ❌', ephemeral=True)
     else:
         await ctx.send('No active tasks to stop. ❌', ephemeral=True)
@@ -263,12 +270,13 @@ async def reboot(ctx):
     if not await admin_command(ctx):
         await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
         return
-    if ctx.channel.id in running_tasks:
-        await running_tasks[ctx.channel.id].close()
-        del running_tasks[ctx.channel.id]
+    for task_type in ["soaring", "new"]:
+        if ctx.channel.id in running_tasks[task_type]:
+            await running_tasks[task_type][ctx.channel.id].close()
+            del running_tasks[task_type][ctx.channel.id]
     scheduler = await aiojobs.create_scheduler()
     task = await scheduler.spawn(loop_send_soaring_coins(ctx.channel))
-    running_tasks[ctx.channel.id] = task
+    running_tasks["soaring"][ctx.channel.id] = task
     await ctx.send('Rebooted the coin information sending loops. 🔄', ephemeral=True)
 
 async def loop_send_soaring_coins(channel):
@@ -283,13 +291,17 @@ async def loop_send_new_created_coins(channel):
 
 async def monitor_tasks():
     while True:
-        for channel_id, task in list(running_tasks.items()):
-            if task.done():
-                logging.warning(f"Task for channel {channel_id} has stopped. Restarting...")
-                channel = await bot.fetch_channel(channel_id)
-                scheduler = await aiojobs.create_scheduler()
-                new_task = await scheduler.spawn(loop_send_soaring_coins(channel))
-                running_tasks[channel_id] = new_task
+        for task_type in ["soaring", "new"]:
+            for channel_id, task in list(running_tasks[task_type].items()):
+                if task.done():
+                    logging.warning(f"Task for channel {channel_id} has stopped. Restarting {task_type} task...")
+                    channel = await bot.fetch_channel(channel_id)
+                    scheduler = await aiojobs.create_scheduler()
+                    if task_type == "soaring":
+                        new_task = await scheduler.spawn(loop_send_soaring_coins(channel))
+                    else:
+                        new_task = await scheduler.spawn(loop_send_new_created_coins(channel))
+                    running_tasks[task_type][channel_id] = new_task
         await asyncio.sleep(60)  # Check every minute
 
 bot.start()
