@@ -5,12 +5,13 @@ import aiojobs
 from datetime import datetime, timedelta
 import asyncio
 import random
+import dotenv
+import os
+
+dotenv.load_dotenv()
 
 # Correct token and default_scope initialization
-bot = interactions.Client(
-    token="YOUR_BOT_TOKEN",
-    default_scope=1259094394397790231
-)
+bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
 
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
 
@@ -141,7 +142,8 @@ async def delete_old_messages(channel, valid_addresses, sent_messages):
         if address not in valid_addresses:
             try:
                 message = await channel.fetch_message(message_id)
-                await message.delete()
+                if message:
+                    await message.delete()
                 del sent_messages[address]
             except interactions.errors.NotFound:
                 del sent_messages[address]
@@ -198,9 +200,9 @@ async def on_ready():
     asyncio.create_task(monitor_tasks())  # Start the monitoring task
 
 async def admin_command(ctx):
-    member = await ctx.guild.fetch_member(ctx.author.id)
-    permissions = await ctx.guild.fetch_roles()
-    return any(role.permissions.has(interactions.Permissions.MANAGE_GUILD) for role in permissions)
+    guild = await bot.fetch_guild(ctx.guild_id)
+    member = await guild.fetch_member(ctx.author.id)
+    return ctx.author.username == owner_username or any(role.permissions & interactions.Permissions.MANAGE_GUILD for role in member.roles)
 
 @interactions.slash_command(
     name="soaring",
