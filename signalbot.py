@@ -188,7 +188,7 @@ async def send_soaring_coins(channel):
     try:
         params = {
             'limit': '50',
-            'orderby': 'created_timestamp',
+            'orderby': 'usd_market_cap',
             'direction': 'desc',
             'soaring': 'true',
             'min_marketcap': '5000',
@@ -212,7 +212,7 @@ async def send_new_created_coins(channel):
     try:
         params = {
             'limit': '50',
-            'orderby': 'created_timestamp',
+            'orderby': 'usd_market_cap',
             'direction': 'desc',
             'new_creation': 'true',
             'max_marketcap': '10000',
