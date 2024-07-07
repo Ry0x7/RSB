@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 import asyncio
 import random
 
-
 # Correct token and default_scope initialization
 bot = interactions.Client(
     token="MTI1OTA5MjEwNzk0NDAwNTcwNA.GdiQza.BpS494-GNqNLsKkHAUvVWo6MM0UhABVmAf40Jk",
@@ -46,12 +45,16 @@ def get_time_since_creation(created_timestamp):
     else:
         return f"{time_diff.days} days ago"
 
-def format_embed(item, title):
+def format_embed(item, title, updated=False):
     if not item['address'].endswith('pump'):
         return None
 
+    embed_title = title
+    if updated:
+        embed_title = f"Updated {title}"
+
     embed = interactions.Embed(
-        title=title,
+        title=embed_title,
         color=0x00ff00
     )
 
@@ -105,15 +108,19 @@ def format_embed(item, title):
     return embed
 
 async def send_or_update_embed(channel, item, title):
-    embed = format_embed(item, title)
+    updated = item['address'] in sent_messages
+    embed = format_embed(item, title, updated)
     if not embed:
         return
     
-    if item['address'] in sent_messages:
+    if updated:
         message_id = sent_messages[item['address']]
         try:
             message = await channel.fetch_message(message_id)
-            await message.edit(embeds=[embed])
+            if message is not None:
+                await message.edit(embeds=[embed])
+            else:
+                raise interactions.errors.NotFound
         except interactions.errors.NotFound:
             message = await channel.send(embeds=[embed])
             sent_messages[item['address']] = message.id
@@ -128,8 +135,8 @@ async def send_soaring_coins(channel):
         'orderby': 'created_timestamp',
         'direction': 'desc',
         'soaring': 'true',
-        'min_marketcap': '4000',
-        'max_marketcap': '25000',
+        'min_marketcap': '5000',
+        'max_marketcap': '13000',
         'min_holder_count': '20',
         'min_volume': '1000',
     }
@@ -147,7 +154,8 @@ async def send_new_created_coins(channel):
         'orderby': 'created_timestamp',
         'direction': 'desc',
         'new_creation': 'true',
-        'max_marketcap': '13000',
+        'min_marketcap': '4000',
+        'max_marketcap': '10000',
         'min_holder_count': '15',
     }
     url = build_query_url(BASE_URL, params)
