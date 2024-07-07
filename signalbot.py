@@ -196,13 +196,13 @@ async def send_soaring_coins(channel):
     try:
         params = {
             'limit': '50',
-            'orderby': 'created_timestamp',
+            'orderby': 'usd_market_cap',
             'direction': 'desc',
             'soaring': 'true',
             'min_marketcap': '5000',
-            'max_marketcap': '25000',
+            'max_marketcap': '30000',
             'min_holder_count': '25',
-            'min_volume': '1000',
+            'min_volume': '2000',
         }
         url = build_query_url(BASE_URL, params)
         data = fetch_data(url)
@@ -220,7 +220,7 @@ async def send_new_created_coins(channel):
     try:
         params = {
             'limit': '50',
-            'orderby': 'created_timestamp',
+            'orderby': 'usd_market_cap',
             'direction': 'desc',
             'new_creation': 'true',
             'max_marketcap': '10000',
