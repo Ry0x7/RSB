@@ -19,8 +19,9 @@ last_new_data = None
 
 logging.basicConfig(level=logging.INFO)
 
-# Dictionary to keep track of running tasks
+# Dictionary to keep track of running tasks and sent messages
 running_tasks = {}
+sent_messages = {}
 
 def fetch_data(url):
     logging.info(f"Fetching data from URL: {url}")
@@ -102,24 +103,22 @@ def format_embed(item, title):
     )
     return embed
 
-async def send_embeds(channel, embeds):
-    for embed in embeds:
-        if embed:
-            await send_with_retry(channel, embed)
-            await asyncio.sleep(2)  # Wait for 2 seconds before sending the next embed
-
-async def send_with_retry(channel, embed, retries=5):
-    for attempt in range(retries):
+async def send_or_update_embed(channel, item, title):
+    embed = format_embed(item, title)
+    if not embed:
+        return
+    
+    if item['address'] in sent_messages:
+        message_id = sent_messages[item['address']]
         try:
-            await channel.send(embeds=[embed])
-            return
-        except RuntimeError as e:
-            if 'Attempted to lock a bucket that is already locked' in str(e):
-                wait_time = (2 ** attempt) + random.uniform(0, 1)  # Exponential backoff
-                await asyncio.sleep(wait_time)
-            else:
-                raise e
-    logging.error("Failed to send embed after multiple retries")
+            message = await channel.fetch_message(message_id)
+            await message.edit(embeds=[embed])
+        except interactions.errors.NotFound:
+            message = await channel.send(embeds=[embed])
+            sent_messages[item['address']] = message.id
+    else:
+        message = await channel.send(embeds=[embed])
+        sent_messages[item['address']] = message.id
 
 async def send_soaring_coins(channel):
     global last_soaring_data
@@ -128,8 +127,8 @@ async def send_soaring_coins(channel):
         'orderby': 'created_timestamp',
         'direction': 'desc',
         'soaring': 'true',
-        'min_marketcap': '5000',
-        'max_marketcap': '13000',
+        'min_marketcap': '4000',
+        'max_marketcap': '25000',
         'min_holder_count': '20',
         'min_volume': '1000',
     }
@@ -137,8 +136,8 @@ async def send_soaring_coins(channel):
     data = fetch_data(url)
     if data and data['data']['rank'] != last_soaring_data:
         last_soaring_data = data['data']['rank']
-        embeds = [format_embed(item, "🚀 Soaring Coin") for item in data['data']['rank'] if item['address'].endswith('pump')]
-        await send_embeds(channel, embeds)
+        for item in data['data']['rank']:
+            await send_or_update_embed(channel, item, "🚀 Soaring Coin")
 
 async def send_new_created_coins(channel):
     global last_new_data
@@ -147,15 +146,15 @@ async def send_new_created_coins(channel):
         'orderby': 'created_timestamp',
         'direction': 'desc',
         'new_creation': 'true',
-        'max_marketcap': '10000',
+        'max_marketcap': '13000',
         'min_holder_count': '15',
     }
     url = build_query_url(BASE_URL, params)
     data = fetch_data(url)
     if data and data['data']['rank'] != last_new_data:
         last_new_data = data['data']['rank']
-        embeds = [format_embed(item, "🌟 Newly Created Coin") for item in data['data']['rank'] if item['address'].endswith('pump')]
-        await send_embeds(channel, embeds)
+        for item in data['data']['rank']:
+            await send_or_update_embed(channel, item, "🌟 Newly Created Coin")
 
 def build_query_url(base_url, params):
     query_url = f"{base_url}?"
