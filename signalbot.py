@@ -29,6 +29,9 @@ running_tasks = {
 sent_soaring_messages = {}
 sent_new_messages = {}
 
+seen_names = set()
+seen_tickers = set()
+
 def fetch_data(url):
     logging.info(f"Fetching data from URL: {url}")
     response = requests.get(url)
@@ -62,6 +65,10 @@ def format_embed(item, title, updated=False):
     embed_title = title
     if updated:
         embed_title = f"Updated {title}"
+
+    is_duplicate = item['name'] in seen_names or item['symbol'] in seen_tickers
+    if is_duplicate:
+        embed_title += " (Duplicated Coin)"
 
     embed = interactions.Embed(
         title=embed_title,
@@ -149,6 +156,8 @@ async def send_or_update_embed(channel, item, title, sent_messages):
         else:
             message = await channel.send(embeds=[embed])
             sent_messages[item['address']] = message.id
+            seen_names.add(item['name'])
+            seen_tickers.add(item['symbol'])
     except Exception as e:
         logging.error(f"Error in send_or_update_embed: {e}")
 
@@ -188,7 +197,7 @@ async def send_soaring_coins(channel):
     try:
         params = {
             'limit': '50',
-            'orderby': 'usd_market_cap',
+            'orderby': 'created_timestamp',
             'direction': 'desc',
             'soaring': 'true',
             'min_marketcap': '5000',
@@ -212,7 +221,7 @@ async def send_new_created_coins(channel):
     try:
         params = {
             'limit': '50',
-            'orderby': 'usd_market_cap',
+            'orderby': 'created_timestamp',
             'direction': 'desc',
             'new_creation': 'true',
             'max_marketcap': '10000',
