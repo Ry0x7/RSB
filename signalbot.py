@@ -99,9 +99,12 @@ def format_embed(item, title, updated=False):
             f"📈 **Bonding Curve Progress:** `{progress:.2f}%`\n"
             f"---\n"
             f"```{item['address']}```\n"
-            f"[PHOTON:   {item['address']}]({photon_link})\n"
-            f"[BULLX:   {item['address']}]({bullx_link})\n"
-            f"{social_links}\n"
+            f"[PHOTON: {item['address']}]({photon_link})\n"
+            f"[BULLX: {item['address']}]({bullx_link})\n"
+            f"{social_links}\n\n"
+            f"Donations Accepted/Encouraged\n"
+            f"`Rodent: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n"
+            f"For Business Inquiries: https://t.me/j3rrycr3dits\n"
         ),
         inline=False
     )
@@ -121,7 +124,7 @@ async def send_or_update_embed(channel, item, title):
                 await message.edit(embeds=[embed])
             else:
                 raise interactions.errors.NotFound
-        except interactions.errors.NotFound:
+        except (interactions.errors.NotFound, interactions.errors.HTTPException):
             message = await channel.send(embeds=[embed])
             sent_messages[item['address']] = message.id
     else:
@@ -135,9 +138,9 @@ async def send_soaring_coins(channel):
         'orderby': 'created_timestamp',
         'direction': 'desc',
         'soaring': 'true',
-        'min_marketcap': '4000',
+        'min_marketcap': '5000',
         'max_marketcap': '25000',
-        'min_holder_count': '20',
+        'min_holder_count': '25',
         'min_volume': '1000',
     }
     url = build_query_url(BASE_URL, params)
@@ -154,7 +157,7 @@ async def send_new_created_coins(channel):
         'orderby': 'created_timestamp',
         'direction': 'desc',
         'new_creation': 'true',
-        'max_marketcap': '13000',
+        'max_marketcap': '10000',
         'min_holder_count': '15',
     }
     url = build_query_url(BASE_URL, params)
@@ -223,11 +226,11 @@ async def stop(ctx):
 async def loop_send_soaring_coins(channel):
     while True:
         await send_soaring_coins(channel)
-        await asyncio.sleep(5)  # Wait for 5 seconds before sending the next update
+        await asyncio.sleep(3)  # Wait for 5 seconds before sending the next update
 
 async def loop_send_new_created_coins(channel):
     while True:
         await send_new_created_coins(channel)
-        await asyncio.sleep(5)  # Wait for 5 seconds before sending the next update
+        await asyncio.sleep(3)  # Wait for 5 seconds before sending the next update
 
 bot.start()
