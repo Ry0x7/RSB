@@ -14,8 +14,8 @@ bot = interactions.Client(
 
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
 
-last_soaring_data = None
-last_new_data = None
+last_soaring_data = {}
+last_new_data = {}
 
 logging.basicConfig(level=logging.INFO)
 
@@ -166,10 +166,10 @@ async def send_soaring_coins(channel):
     }
     url = build_query_url(BASE_URL, params)
     data = fetch_data(url)
-    if data and data['data']['rank'] != last_soaring_data:
-        last_soaring_data = data['data']['rank']
+    if data:
         for item in data['data']['rank']:
             await send_or_update_embed(channel, item, "🚀 Soaring Coin")
+        last_soaring_data = {item['address']: item for item in data['data']['rank']}
 
 async def send_new_created_coins(channel):
     global last_new_data
@@ -183,10 +183,10 @@ async def send_new_created_coins(channel):
     }
     url = build_query_url(BASE_URL, params)
     data = fetch_data(url)
-    if data and data['data']['rank'] != last_new_data:
-        last_new_data = data['data']['rank']
+    if data:
         for item in data['data']['rank']:
             await send_or_update_embed(channel, item, "🌟 Newly Created Coin")
+        last_new_data = {item['address']: item for item in data['data']['rank']}
 
 def build_query_url(base_url, params):
     query_url = f"{base_url}?"
@@ -253,11 +253,11 @@ async def stop(ctx):
 async def loop_send_soaring_coins(channel):
     while True:
         await send_soaring_coins(channel)
-        await asyncio.sleep(2)  # Wait for 3 seconds before sending the next update
+        await asyncio.sleep(4)  # Wait for 4 seconds before sending the next update
 
 async def loop_send_new_created_coins(channel):
     while True:
         await send_new_created_coins(channel)
-        await asyncio.sleep(2)  # Wait for 3 seconds before sending the next update
+        await asyncio.sleep(4)  # Wait for 4 seconds before sending the next update
 
 bot.start()
