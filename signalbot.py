@@ -23,6 +23,7 @@ logging.basicConfig(level=logging.INFO)
 # Dictionary to keep track of running tasks and sent messages
 running_tasks = {}
 sent_messages = {}
+sent_coins = set()
 
 def fetch_data(url):
     logging.info(f"Fetching data from URL: {url}")
@@ -112,28 +113,35 @@ def format_embed(item, title, updated=False):
     return embed
 
 async def send_or_update_embed(channel, item, title):
-    updated = item['address'] in sent_messages
-    embed = format_embed(item, title, updated)
-    if not embed:
-        return
-    
-    if updated:
-        message_id = sent_messages[item['address']]
-        try:
-            message = await channel.fetch_message(message_id)
-            if message is not None:
-                await message.edit(embeds=[embed])
-            else:
+    if item['address'] in sent_coins:
+        updated = item['address'] in sent_messages
+        embed = format_embed(item, title, updated)
+        if not embed:
+            return
+        
+        if updated:
+            message_id = sent_messages[item['address']]
+            try:
+                message = await channel.fetch_message(message_id)
+                if message is not None:
+                    await message.edit(embeds=[embed])
+                else:
+                    del sent_messages[item['address']]
+                    message = await channel.send(embeds=[embed])
+                    sent_messages[item['address']] = message.id
+            except interactions.errors.NotFound:
                 del sent_messages[item['address']]
                 message = await channel.send(embeds=[embed])
                 sent_messages[item['address']] = message.id
-        except interactions.errors.NotFound:
-            del sent_messages[item['address']]
+        else:
             message = await channel.send(embeds=[embed])
             sent_messages[item['address']] = message.id
     else:
-        message = await channel.send(embeds=[embed])
-        sent_messages[item['address']] = message.id
+        embed = format_embed(item, title, False)
+        if embed:
+            message = await channel.send(embeds=[embed])
+            sent_messages[item['address']] = message.id
+            sent_coins.add(item['address'])
 
 async def send_soaring_coins(channel):
     global last_soaring_data
