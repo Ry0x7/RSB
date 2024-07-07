@@ -91,27 +91,33 @@ def format_embed(item, title, updated=False):
     if social_links:
         social_links = f"SOCIALS = {social_links}"
 
+    field_value = (
+        f"---\n"
+        f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}` 📊 **5-Min Volume:** `${volume_5m}`\n"
+        f"👥 **Holders:** {holder_count}\n"
+        f"💬 **Reply Count:** {reply_count}\n"
+        f"🏆 **Top 10 Holders Rate:** `{top_10_holder_rate:.2f}%`\n"
+        f"👤 **[Creator Address]({solscan_dev_link})** (Sol Balance: `{creator_balance}`)\n"
+        f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'}\n"
+        f"🛠️ **Dev Sold?:** {dev_sold}\n"
+        f"📈 **Bonding Curve Progress:** `{progress:.2f}%`\n"
+        f"---\n"
+        f"```{item['address']}```\n"
+        f"[PHOTON: {item['address']}]({photon_link})\n"
+        f"[BULLX: {item['address']}]({bullx_link})\n"
+        f"{social_links}\n\n"
+        f"Donations Accepted/Encouraged\n"
+        f"`Rodent: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n"
+        f"For Business Inquiries: https://t.me/j3rrycr3dits\n"
+    )
+
+    if len(field_value) > 1024:
+        logging.warning(f"Field value for {item['address']} exceeded 1024 characters. Truncating.")
+        field_value = field_value[:1021] + "..."
+
     embed.add_field(
         name=f"{item['name']} [{item['symbol']}]",
-        value=(
-            f"---\n"
-            f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}` 📊 **5-Min Volume:** `${volume_5m}`\n"
-            f"👥 **Holders:** {holder_count}\n"
-            f"💬 **Reply Count:** {reply_count}\n"
-            f"🏆 **Top 10 Holders Rate:** `{top_10_holder_rate:.2f}%`\n"
-            f"👤 **[Creator Address]({solscan_dev_link})** (Sol Balance: `{creator_balance}`)\n"
-            f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'}\n"
-            f"🛠️ **Dev Sold?:** {dev_sold}\n"
-            f"📈 **Bonding Curve Progress:** `{progress:.2f}%`\n"
-            f"---\n"
-            f"```{item['address']}```\n"
-            f"[PHOTON: {item['address']}]({photon_link})\n"
-            f"[BULLX: {item['address']}]({bullx_link})\n"
-            f"{social_links}\n\n"
-            f"Donations Accepted/Encouraged\n"
-            f"`Rodent: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n"
-            f"For Business Inquiries: https://t.me/j3rrycr3dits\n"
-        ),
+        value=field_value,
         inline=False
     )
     return embed
@@ -122,23 +128,26 @@ async def send_or_update_embed(channel, item, title, sent_messages):
     if not embed:
         return
     
-    if updated:
-        message_id = sent_messages[item['address']]
-        try:
-            message = await channel.fetch_message(message_id)
-            if message is not None:
-                await edit_message_with_retry(message, embed)
-            else:
+    try:
+        if updated:
+            message_id = sent_messages[item['address']]
+            try:
+                message = await channel.fetch_message(message_id)
+                if message is not None:
+                    await edit_message_with_retry(message, embed)
+                else:
+                    del sent_messages[item['address']]
+                    message = await channel.send(embeds=[embed])
+                    sent_messages[item['address']] = message.id
+            except interactions.errors.NotFound:
                 del sent_messages[item['address']]
                 message = await channel.send(embeds=[embed])
                 sent_messages[item['address']] = message.id
-        except interactions.errors.NotFound:
-            del sent_messages[item['address']]
+        else:
             message = await channel.send(embeds=[embed])
             sent_messages[item['address']] = message.id
-    else:
-        message = await channel.send(embeds=[embed])
-        sent_messages[item['address']] = message.id
+    except Exception as e:
+        logging.error(f"Error in send_or_update_embed: {e}")
 
 async def edit_message_with_retry(message, embed, retries=5):
     for attempt in range(retries):
@@ -168,46 +177,54 @@ async def delete_old_messages(channel, valid_addresses, sent_messages):
                     retry_after = e.response.headers.get('Retry-After')
                     await asyncio.sleep(float(retry_after))
                     await delete_old_messages(channel, valid_addresses, sent_messages)
+            except Exception as e:
+                logging.error(f"Error in delete_old_messages: {e}")
 
 async def send_soaring_coins(channel):
     global last_soaring_data
-    params = {
-        'limit': '50',
-        'orderby': 'created_timestamp',
-        'direction': 'desc',
-        'soaring': 'true',
-        'min_marketcap': '5000',
-        'max_marketcap': '25000',
-        'min_holder_count': '25',
-        'min_volume': '1000',
-    }
-    url = build_query_url(BASE_URL, params)
-    data = fetch_data(url)
-    if data and data['data']['rank'] != last_soaring_data:
-        last_soaring_data = data['data']['rank']
-        valid_addresses = {item['address'] for item in data['data']['rank']}
-        for item in data['data']['rank']:
-            await send_or_update_embed(channel, item, "🚀 Soaring Coin", sent_soaring_messages)
-        await delete_old_messages(channel, valid_addresses, sent_soaring_messages)
+    try:
+        params = {
+            'limit': '50',
+            'orderby': 'created_timestamp',
+            'direction': 'desc',
+            'soaring': 'true',
+            'min_marketcap': '5000',
+            'max_marketcap': '25000',
+            'min_holder_count': '25',
+            'min_volume': '1000',
+        }
+        url = build_query_url(BASE_URL, params)
+        data = fetch_data(url)
+        if data and data['data']['rank'] != last_soaring_data:
+            last_soaring_data = data['data']['rank']
+            valid_addresses = {item['address'] for item in data['data']['rank']}
+            for item in data['data']['rank']:
+                await send_or_update_embed(channel, item, "🚀 Soaring Coin", sent_soaring_messages)
+            await delete_old_messages(channel, valid_addresses, sent_soaring_messages)
+    except Exception as e:
+        logging.error(f"Error in send_soaring_coins: {e}")
 
 async def send_new_created_coins(channel):
     global last_new_data
-    params = {
-        'limit': '50',
-        'orderby': 'created_timestamp',
-        'direction': 'desc',
-        'new_creation': 'true',
-        'max_marketcap': '10000',
-        'min_holder_count': '15',
-    }
-    url = build_query_url(BASE_URL, params)
-    data = fetch_data(url)
-    if data and data['data']['rank'] != last_new_data:
-        last_new_data = data['data']['rank']
-        valid_addresses = {item['address'] for item in data['data']['rank']}
-        for item in data['data']['rank']:
-            await send_or_update_embed(channel, item, "🌟 Newly Created Coin", sent_new_messages)
-        await delete_old_messages(channel, valid_addresses, sent_new_messages)
+    try:
+        params = {
+            'limit': '50',
+            'orderby': 'created_timestamp',
+            'direction': 'desc',
+            'new_creation': 'true',
+            'max_marketcap': '10000',
+            'min_holder_count': '15',
+        }
+        url = build_query_url(BASE_URL, params)
+        data = fetch_data(url)
+        if data and data['data']['rank'] != last_new_data:
+            last_new_data = data['data']['rank']
+            valid_addresses = {item['address'] for item in data['data']['rank']}
+            for item in data['data']['rank']:
+                await send_or_update_embed(channel, item, "🌟 Newly Created Coin", sent_new_messages)
+            await delete_old_messages(channel, valid_addresses, sent_new_messages)
+    except Exception as e:
+        logging.error(f"Error in send_new_created_coins: {e}")
 
 def build_query_url(base_url, params):
     query_url = f"{base_url}?"
@@ -232,14 +249,17 @@ async def admin_command(ctx):
     dm_permission=False
 )
 async def soaring(ctx):
-    if not await admin_command(ctx):
-        await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-        return
-    await ctx.send('Grabbing Soaring Coins for the BAGSS! 👜', ephemeral=True)
-    scheduler = await aiojobs.create_scheduler()
-    task = await scheduler.spawn(loop_send_soaring_coins(ctx.channel))
-    running_tasks["soaring"][ctx.channel.id] = task
-    await ctx.send('Started sending soaring coin information. 📈', ephemeral=True)
+    try:
+        if not await admin_command(ctx):
+            await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+            return
+        await ctx.send('Grabbing Soaring Coins for the BAGSS! 👜', ephemeral=True)
+        scheduler = await aiojobs.create_scheduler()
+        task = await scheduler.spawn(loop_send_soaring_coins(ctx.channel))
+        running_tasks["soaring"][ctx.channel.id] = task
+        await ctx.send('Started sending soaring coin information. 📈', ephemeral=True)
+    except Exception as e:
+        logging.error(f"Error in soaring command: {e}")
 
 @interactions.slash_command(
     name="new",
@@ -248,14 +268,17 @@ async def soaring(ctx):
     dm_permission=False
 )
 async def new(ctx):
-    if not await admin_command(ctx):
-        await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-        return
-    await ctx.send('Grabbing Newly Created Coins for the BAGSS! 👜', ephemeral=True)
-    scheduler = await aiojobs.create_scheduler()
-    task = await scheduler.spawn(loop_send_new_created_coins(ctx.channel))
-    running_tasks["new"][ctx.channel.id] = task
-    await ctx.send('Started sending newly created coin information. 📈', ephemeral=True)
+    try:
+        if not await admin_command(ctx):
+            await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+            return
+        await ctx.send('Grabbing Newly Created Coins for the BAGSS! 👜', ephemeral=True)
+        scheduler = await aiojobs.create_scheduler()
+        task = await scheduler.spawn(loop_send_new_created_coins(ctx.channel))
+        running_tasks["new"][ctx.channel.id] = task
+        await ctx.send('Started sending newly created coin information. 📈', ephemeral=True)
+    except Exception as e:
+        logging.error(f"Error in new command: {e}")
 
 @interactions.slash_command(
     name="stop",
@@ -264,19 +287,22 @@ async def new(ctx):
     dm_permission=False
 )
 async def stop(ctx):
-    if not await admin_command(ctx):
-        await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-        return
-    stopped_any = False
-    for task_type in ["soaring", "new"]:
-        if ctx.channel.id in running_tasks[task_type]:
-            await running_tasks[task_type][ctx.channel.id].close()
-            del running_tasks[task_type][ctx.channel.id]
-            stopped_any = True
-    if stopped_any:
-        await ctx.send('Stopped sending token information. ❌', ephemeral=True)
-    else:
-        await ctx.send('No active tasks to stop. ❌', ephemeral=True)
+    try:
+        if not await admin_command(ctx):
+            await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+            return
+        stopped_any = False
+        for task_type in ["soaring", "new"]:
+            if ctx.channel.id in running_tasks[task_type]:
+                await running_tasks[task_type][ctx.channel.id].close()
+                del running_tasks[task_type][ctx.channel.id]
+                stopped_any = True
+        if stopped_any:
+            await ctx.send('Stopped sending token information. ❌', ephemeral=True)
+        else:
+            await ctx.send('No active tasks to stop. ❌', ephemeral=True)
+    except Exception as e:
+        logging.error(f"Error in stop command: {e}")
 
 @interactions.slash_command(
     name="reboot",
@@ -285,26 +311,35 @@ async def stop(ctx):
     dm_permission=False
 )
 async def reboot(ctx):
-    if not await admin_command(ctx):
-        await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-        return
-    for task_type in ["soaring", "new"]:
-        if ctx.channel.id in running_tasks[task_type]:
-            await running_tasks[task_type][ctx.channel.id].close()
-            del running_tasks[task_type][ctx.channel.id]
-    scheduler = await aiojobs.create_scheduler()
-    task = await scheduler.spawn(loop_send_soaring_coins(ctx.channel))
-    running_tasks["soaring"][ctx.channel.id] = task
-    await ctx.send('Rebooted the coin information sending loops. 🔄', ephemeral=True)
+    try:
+        if not await admin_command(ctx):
+            await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+            return
+        for task_type in ["soaring", "new"]:
+            if ctx.channel.id in running_tasks[task_type]:
+                await running_tasks[task_type][ctx.channel.id].close()
+                del running_tasks[task_type][ctx.channel.id]
+        scheduler = await aiojobs.create_scheduler()
+        task = await scheduler.spawn(loop_send_soaring_coins(ctx.channel))
+        running_tasks["soaring"][ctx.channel.id] = task
+        await ctx.send('Rebooted the coin information sending loops. 🔄', ephemeral=True)
+    except Exception as e:
+        logging.error(f"Error in reboot command: {e}")
 
 async def loop_send_soaring_coins(channel):
     while True:
-        await send_soaring_coins(channel)
+        try:
+            await send_soaring_coins(channel)
+        except Exception as e:
+            logging.error(f"Error in loop_send_soaring_coins: {e}")
         await asyncio.sleep(4)  # Wait for 4 seconds before sending the next update
 
 async def loop_send_new_created_coins(channel):
     while True:
-        await send_new_created_coins(channel)
+        try:
+            await send_new_created_coins(channel)
+        except Exception as e:
+            logging.error(f"Error in loop_send_new_created_coins: {e}")
         await asyncio.sleep(4)  # Wait for 4 seconds before sending the next update
 
 async def monitor_tasks():
