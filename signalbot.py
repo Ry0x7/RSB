@@ -116,6 +116,19 @@ def format_embed(item, title, updated=False):
     )
     return embed
 
+async def send_with_retry(channel, embed, retries=5):
+    for attempt in range(retries):
+        try:
+            message = await channel.send(embeds=[embed])
+            return message
+        except RuntimeError as e:
+            if 'Attempted to lock a bucket that is already locked' in str(e):
+                wait_time = (2 ** attempt) + random.uniform(0, 1)  # Exponential backoff
+                await asyncio.sleep(wait_time)
+            else:
+                raise e
+    logging.error("Failed to send embed after multiple retries")
+
 async def send_or_update_embed(channel, item, title):
     updated = item['address'] in sent_messages
     embed = format_embed(item, title, updated)
@@ -130,13 +143,13 @@ async def send_or_update_embed(channel, item, title):
                 await message.edit(embeds=[embed])
             else:
                 # If the message is not found, send a new one
-                message = await channel.send(embeds=[embed])
+                message = await send_with_retry(channel, embed)
                 sent_messages[item['address']] = message.id
         except interactions.errors.HTTPException:
-            message = await channel.send(embeds=[embed])
+            message = await send_with_retry(channel, embed)
             sent_messages[item['address']] = message.id
     else:
-        message = await channel.send(embeds=[embed])
+        message = await send_with_retry(channel, embed)
         sent_messages[item['address']] = message.id
 
 async def send_soaring_coins(channel):
@@ -194,6 +207,9 @@ async def soaring(ctx):
     if ctx.author.username != "chakazzz":
         await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
         return
+    if ctx.channel.id in running_tasks:
+        await ctx.send('The bot is already running in this channel. ⏳', ephemeral=True)
+        return
     await ctx.send('Grabbing Soaring Coins for the BAGSS! 👜', ephemeral=True)
     scheduler = await aiojobs.create_scheduler()
     task = await scheduler.spawn(loop_send_soaring_coins(ctx.channel))
@@ -208,6 +224,9 @@ async def new(ctx):
     logging.info(f"new command invoked by user: {ctx.author.username}")
     if ctx.author.username != "chakazzz":
         await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+        return
+    if ctx.channel.id in running_tasks:
+        await ctx.send('The bot is already running in this channel. ⏳', ephemeral=True)
         return
     await ctx.send('Grabbing Newly Created Coins for the BAGSS! 👜', ephemeral=True)
     scheduler = await aiojobs.create_scheduler()
@@ -234,11 +253,11 @@ async def stop(ctx):
 async def loop_send_soaring_coins(channel):
     while True:
         await send_soaring_coins(channel)
-        await asyncio.sleep(1)  # Wait for 5 seconds before sending the next update
+        await asyncio.sleep(2)  # Wait for 3 seconds before sending the next update
 
 async def loop_send_new_created_coins(channel):
     while True:
         await send_new_created_coins(channel)
-        await asyncio.sleep(1)  # Wait for 5 seconds before sending the next update
+        await asyncio.sleep(2)  # Wait for 3 seconds before sending the next update
 
 bot.start()
