@@ -9,6 +9,7 @@ import random
 # Correct token and default_scope initialization
 bot = interactions.Client(
     token="MTI1OTA5MjEwNzk0NDAwNTcwNA.GdiQza.BpS494-GNqNLsKkHAUvVWo6MM0UhABVmAf40Jk",
+    default_scope=1259094394397790231
 )
 
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
@@ -123,8 +124,11 @@ async def send_or_update_embed(channel, item, title):
             if message is not None:
                 await message.edit(embeds=[embed])
             else:
-                raise interactions.errors.NotFound
-        except (interactions.errors.NotFound, interactions.errors.HTTPException):
+                del sent_messages[item['address']]
+                message = await channel.send(embeds=[embed])
+                sent_messages[item['address']] = message.id
+        except interactions.errors.NotFound:
+            del sent_messages[item['address']]
             message = await channel.send(embeds=[embed])
             sent_messages[item['address']] = message.id
     else:
@@ -226,7 +230,7 @@ async def stop(ctx):
         await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
         return
     if ctx.channel.id in running_tasks:
-        running_tasks[ctx.channel.id].close()
+        await running_tasks[ctx.channel.id].close()
         del running_tasks[ctx.channel.id]
         await ctx.send('Stopped sending token information. ❌', ephemeral=True)
     else:
@@ -243,7 +247,7 @@ async def reboot(ctx):
         await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
         return
     if ctx.channel.id in running_tasks:
-        running_tasks[ctx.channel.id].close()
+        await running_tasks[ctx.channel.id].close()
         del running_tasks[ctx.channel.id]
     scheduler = await aiojobs.create_scheduler()
     task = await scheduler.spawn(loop_send_soaring_coins(ctx.channel))
