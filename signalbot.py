@@ -29,8 +29,7 @@ running_tasks = {
 sent_soaring_messages = {}
 sent_new_messages = {}
 
-seen_names = set()
-seen_tickers = set()
+seen_coins = {}
 
 def fetch_data(url):
     logging.info(f"Fetching data from URL: {url}")
@@ -66,7 +65,8 @@ def format_embed(item, title, updated=False):
     if updated:
         embed_title = f"Updated {title}"
 
-    is_duplicate = item['name'] in seen_names or item['symbol'] in seen_tickers
+    coin_key = (item['name'], item['symbol'])
+    is_duplicate = coin_key in seen_coins and seen_coins[coin_key] != item['address']
     if is_duplicate:
         embed_title += " (Duplicated Coin)"
 
@@ -156,8 +156,7 @@ async def send_or_update_embed(channel, item, title, sent_messages):
         else:
             message = await channel.send(embeds=[embed])
             sent_messages[item['address']] = message.id
-            seen_names.add(item['name'])
-            seen_tickers.add(item['symbol'])
+            seen_coins[(item['name'], item['symbol'])] = item['address']
     except Exception as e:
         logging.error(f"Error in send_or_update_embed: {e}")
 
