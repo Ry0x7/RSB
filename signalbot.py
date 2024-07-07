@@ -85,27 +85,33 @@ def format_embed(item, title, updated=False):
     if social_links:
         social_links = f"SOCIALS = {social_links}"
 
+    embed_value = (
+        f"---\n"
+        f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}` 📊 **5-Min Volume:** `${volume_5m}`\n"
+        f"👥 **Holders:** {holder_count}\n"
+        f"💬 **Reply Count:** {reply_count}\n"
+        f"🏆 **Top 10 Holders Rate:** `{top_10_holder_rate:.2f}%`\n"
+        f"👤 **[Creator Address]({solscan_dev_link})** (Sol Balance: `{creator_balance}`)\n"
+        f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'}\n"
+        f"🛠️ **Dev Sold?:** {dev_sold}\n"
+        f"📈 **Bonding Curve Progress:** `{progress:.2f}%`\n"
+        f"---\n"
+        f"```{item['address']}```\n"
+        f"[PHOTON: {item['address']}]({photon_link})\n"
+        f"[BULLX: {item['address']}]({bullx_link})\n"
+        f"{social_links}\n\n"
+        f"Donations Accepted/Encouraged\n"
+        f"`Rodent: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n"
+        f"For Business Inquiries: https://t.me/j3rrycr3dits\n"
+    )
+
+    # Truncate embed_value if it exceeds 1024 characters
+    if len(embed_value) > 1024:
+        embed_value = embed_value[:1021] + "..."
+
     embed.add_field(
         name=f"{item['name']} [{item['symbol']}]",
-        value=(
-            f"---\n"
-            f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}` 📊 **5-Min Volume:** `${volume_5m}`\n"
-            f"👥 **Holders:** {holder_count}\n"
-            f"💬 **Reply Count:** {reply_count}\n"
-            f"🏆 **Top 10 Holders Rate:** `{top_10_holder_rate:.2f}%`\n"
-            f"👤 **[Creator Address]({solscan_dev_link})** (Sol Balance: `{creator_balance}`)\n"
-            f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'}\n"
-            f"🛠️ **Dev Sold?:** {dev_sold}\n"
-            f"📈 **Bonding Curve Progress:** `{progress:.2f}%`\n"
-            f"---\n"
-            f"```{item['address']}```\n"
-            f"[PHOTON: {item['address']}]({photon_link})\n"
-            f"[BULLX: {item['address']}]({bullx_link})\n"
-            f"{social_links}\n\n"
-            f"Donations Accepted/Encouraged\n"
-            f"`Rodent: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n"
-            f"For Business Inquiries: https://t.me/j3rrycr3dits\n"
-        ),
+        value=embed_value,
         inline=False
     )
     return embed
@@ -228,11 +234,11 @@ async def stop(ctx):
 async def loop_send_soaring_coins(channel):
     while True:
         await send_soaring_coins(channel)
-        await asyncio.sleep(3)  # Wait for 5 seconds before sending the next update
+        await asyncio.sleep(1)  # Wait for 5 seconds before sending the next update
 
 async def loop_send_new_created_coins(channel):
     while True:
         await send_new_created_coins(channel)
-        await asyncio.sleep(3)  # Wait for 5 seconds before sending the next update
+        await asyncio.sleep(1)  # Wait for 5 seconds before sending the next update
 
 bot.start()
