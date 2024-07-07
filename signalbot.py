@@ -101,20 +101,13 @@ def format_embed(item, title, updated=False):
     reply = fetch_replies(item['address'])
     if reply:
         embed_title += " (Controlled by CTO?)"
-        cto_telegram = ""
         if "OFFICIAL CTO IS" in reply['text']:
             parts = reply['text'].split("OFFICIAL CTO IS")
-            if len(parts) > 1:
-                cto_telegram = parts[1].split()[0]
         elif "CTO IS HERE" in reply['text']:
             parts = reply['text'].split("CTO IS HERE")
-            if len(parts) > 1:
-                cto_telegram = parts[1].split()[0]
         elif "CTO" in reply['text']:
             parts = reply['text'].split("CTO")
-            if len(parts) > 1:
-                cto_telegram = parts[1].split()[0]
-        pumpfun_profile = f"https://pump.fun/profile/{reply['user']}"
+        pumpfunlink = f"https://pump.fun/{item['address']}"
         time_since_message = get_time_since_message(reply['timestamp'])
 
     embed = interactions.Embed(
@@ -125,11 +118,9 @@ def format_embed(item, title, updated=False):
     photon_link = f"https://photon-sol.tinyastro.io/en/r/@RickBurpBot/{item['address']}"
     bullx_link = f"https://bullx.io/terminal?chainId=1399811149&address={item['address']}&r=M7B0AY33YBS"
     solscan_dev_link = f"https://solscan.io/account/{item['creator']}"
-    solscan_token_link = f"https://solscan.io/account/{item['address']}"
     dex_paid = item.get('dexscr_ad', 0) == 1
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
-    creator_balance = f"{float(item.get('creator_balance', 0.0) or 0.0):.2f}"
     holder_count = item.get('holder_count', 'N/A')
     volume_5m = f"{float(item.get('volume_5m', 0.0) or 0.0):.2f}"
     market_cap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 'N/A'
@@ -150,30 +141,27 @@ def format_embed(item, title, updated=False):
 
     field_value = (
         f"{social_links}\n"
-        f"👤 **[Creator Address]({solscan_dev_link})** (Sol Bal: `{creator_balance}`)\n"
-        f"-----------------------------\n"
+        f"👤 **[Creator Address]({solscan_dev_link})**\n"
+        f"---\n"
         f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}`\n"
         f"👥 **Holders:** `{holder_count}` 💬 **Replies** `{reply_count}` 🏆 **Top 10** `{top_10_holder_rate:.2f}%`\n"
         f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'} | 🛠️ **Dev Sold?:** {dev_sold}\n"
         f"📈 **Bonding Curve Progress:** `{progress:.2f}%`  📊 **5-Min Volume:** `${volume_5m}`\n"
-        f"------------------------------\n"
+        f"---\n"
         f"```{item['address']}```\n"
-        f"[PHOTON: {item['address']}]({photon_link})\n\n"
+        f"[PHOTON: {item['address']}]({photon_link})\n"
         f"[BULLX: {item['address']}]({bullx_link})\n"
     )
 
     if reply:
         field_value += (
-            f"---\n"
-            f"**CTO Telegram(Verify First):** {cto_telegram}\n"
-            f"**CTO Lead:** [Profile]({pumpfun_profile})\n"
-            f"**Sent last:** {time_since_message}\n"
+            f"**[PumpFun]**({pumpfunlink})\n"
+            f"**Message:** {time_since_message}\n"
         )
 
-    field_value += (
-        f"\nDonations Accepted/Encouraged\n"
-        f"`Rodent: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n"
-        f"For Business Inquiries: https://t.me/j3rrycr3dits\n"
+    embed = interactions.Embed(
+        title=f"{item['name']} [{item['symbol']}]",
+        color=0x00ff00
     )
 
     if len(field_value) > 1024:
@@ -181,11 +169,18 @@ def format_embed(item, title, updated=False):
         field_value = field_value[:1021] + "..."
 
     embed.add_field(
-        name=f"{item['name']} [{item['symbol']}]",
+        name="Coin Information",
         value=field_value,
         inline=False
     )
-    return embed
+
+    donation_message = (
+        f"Donations Accepted/Encouraged\n"
+        f"`Rodent: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n"
+        f"For Business Inquiries: https://t.me/j3rrycr3dits\n"
+    )
+
+    return embed, donation_message
 
 async def send_or_update_embed(channel, item, title, sent_messages):
     updated = item['address'] in sent_messages
@@ -342,7 +337,7 @@ async def stop(ctx):
         for task_type in ["soaring", "new"]:
             if ctx.channel.id in running_tasks[task_type]:
                 await running_tasks[task_type][ctx.channel.id].close()
-                del running_tasks[task_type][ctx.channel.id]
+                del running_tasks[task_type][ctx.channel.id] 
                 stopped_any = True
         if stopped_any:
             await ctx.send('Stopped sending token information. ❌', ephemeral=True)
