@@ -14,6 +14,7 @@ dotenv.load_dotenv()
 bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
 
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
+REPLY_API_BASE_URL = 'https://frontend-api.pump.fun/replies/'
 
 last_soaring_data = None
 last_new_data = None
@@ -39,10 +40,39 @@ def fetch_data(url):
         return response.json()
     return None
 
+def fetch_replies(token_address):
+    url = f"{REPLY_API_BASE_URL}{token_address}"
+    response = fetch_data(url)
+    if response:
+        replies = response.get('data', [])
+        latest_reply = None
+        latest_timestamp = 0
+        for reply in replies:
+            if any(keyword in reply['text'] for keyword in ["OFFICIAL CTO IS", "DEX ADS GETTING PAID BY CTO", "CTO IS HERE", "CTO"]):
+                if reply['timestamp'] > latest_timestamp:
+                    latest_reply = reply
+                    latest_timestamp = reply['timestamp']
+        return latest_reply
+    return None
+
 def get_time_since_creation(created_timestamp):
     created_time = datetime.utcfromtimestamp(created_timestamp)
     now = datetime.utcnow()
     time_diff = now - created_time
+    
+    if time_diff < timedelta(minutes=1):
+        return f"{time_diff.seconds} seconds ago"
+    elif time_diff < timedelta(hours=1):
+        return f"{time_diff.seconds // 60} minutes ago"
+    elif time_diff < timedelta(days=1):
+        return f"{time_diff.seconds // 3600} hours ago"
+    else:
+        return f"{time_diff.days} days ago"
+
+def get_time_since_message(timestamp):
+    message_time = datetime.utcfromtimestamp(timestamp / 1000)  # Convert from milliseconds to seconds
+    now = datetime.utcnow()
+    time_diff = now - message_time
     
     if time_diff < timedelta(minutes=1):
         return f"{time_diff.seconds} seconds ago"
@@ -69,6 +99,25 @@ def format_embed(item, title, updated=False):
     is_duplicate = coin_key in seen_coins and seen_coins[coin_key] != item['address']
     if is_duplicate:
         embed_title += " (Duplicated Coin)"
+
+    reply = fetch_replies(item['address'])
+    if reply:
+        embed_title += " (Controlled by CTO)"
+        cto_telegram = ""
+        if "OFFICIAL CTO IS" in reply['text']:
+            parts = reply['text'].split("OFFICIAL CTO IS")
+            if len(parts) > 1:
+                cto_telegram = parts[1].split()[0]
+        elif "CTO IS HERE" in reply['text']:
+            parts = reply['text'].split("CTO IS HERE")
+            if len(parts) > 1:
+                cto_telegram = parts[1].split()[0]
+        elif "CTO" in reply['text']:
+            parts = reply['text'].split("CTO")
+            if len(parts) > 1:
+                cto_telegram = parts[1].split()[0]
+        pumpfun_profile = f"https://pump.fun/profile/{reply['user']}"
+        time_since_message = get_time_since_message(reply['timestamp'])
 
     embed = interactions.Embed(
         title=embed_title,
@@ -115,8 +164,19 @@ def format_embed(item, title, updated=False):
         f"```{item['address']}```\n"
         f"[PHOTON: {item['address']}]({photon_link})\n"
         f"[BULLX: {item['address']}]({bullx_link})\n"
-        f"{social_links}\n\n"
-        f"Donations Accepted/Encouraged\n"
+        f"{social_links}\n"
+    )
+
+    if reply:
+        field_value += (
+            f"---\n"
+            f"**CTO Telegram:** {cto_telegram}\n"
+            f"**Pump.fun Profile:** [Profile]({pumpfun_profile})\n"
+            f"**Time Since Message:** {time_since_message}\n"
+        )
+
+    field_value += (
+        f"\nDonations Accepted/Encouraged\n"
         f"`Rodent: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n"
         f"For Business Inquiries: https://t.me/j3rrycr3dits\n"
     )
@@ -144,7 +204,7 @@ async def send_or_update_embed(channel, item, title, sent_messages):
             try:
                 message = await channel.fetch_message(message_id)
                 if message is not None:
-                    await edit_message_with_retry(message, embed)
+                    await message.edit(embeds=[embed])
                 else:
                     del sent_messages[item['address']]
                     message = await channel.send(embeds=[embed])
@@ -156,22 +216,8 @@ async def send_or_update_embed(channel, item, title, sent_messages):
         else:
             message = await channel.send(embeds=[embed])
             sent_messages[item['address']] = message.id
-            seen_coins[(item['name'], item['symbol'])] = item['address']
     except Exception as e:
         logging.error(f"Error in send_or_update_embed: {e}")
-
-async def edit_message_with_retry(message, embed, retries=5):
-    for attempt in range(retries):
-        try:
-            await message.edit(embeds=[embed])
-            return
-        except RuntimeError as e:
-            if 'Attempted to lock a bucket that is already locked' in str(e):
-                wait_time = (2 ** attempt) + random.uniform(0, 1)  # Exponential backoff
-                await asyncio.sleep(wait_time)
-            else:
-                raise e
-    logging.error("Failed to edit message after multiple retries")
 
 async def delete_old_messages(channel, valid_addresses, sent_messages):
     for address, message_id in list(sent_messages.items()):
@@ -183,26 +229,19 @@ async def delete_old_messages(channel, valid_addresses, sent_messages):
                 del sent_messages[address]
             except interactions.errors.NotFound:
                 del sent_messages[address]
-            except interactions.errors.HTTPException as e:
-                if e.response.status == 429:
-                    retry_after = e.response.headers.get('Retry-After')
-                    await asyncio.sleep(float(retry_after))
-                    await delete_old_messages(channel, valid_addresses, sent_messages)
-            except Exception as e:
-                logging.error(f"Error in delete_old_messages: {e}")
 
 async def send_soaring_coins(channel):
     global last_soaring_data
     try:
         params = {
             'limit': '50',
-            'orderby': 'usd_market_cap',
+            'orderby': 'created_timestamp',
             'direction': 'desc',
             'soaring': 'true',
             'min_marketcap': '5000',
-            'max_marketcap': '30000',
+            'max_marketcap': '25000',
             'min_holder_count': '25',
-            'min_volume': '2000',
+            'min_volume': '1000',
         }
         url = build_query_url(BASE_URL, params)
         data = fetch_data(url)
@@ -211,6 +250,7 @@ async def send_soaring_coins(channel):
             valid_addresses = {item['address'] for item in data['data']['rank']}
             for item in data['data']['rank']:
                 await send_or_update_embed(channel, item, "🚀 Soaring Coin", sent_soaring_messages)
+                seen_coins[(item['name'], item['symbol'])] = item['address']
             await delete_old_messages(channel, valid_addresses, sent_soaring_messages)
     except Exception as e:
         logging.error(f"Error in send_soaring_coins: {e}")
@@ -220,7 +260,7 @@ async def send_new_created_coins(channel):
     try:
         params = {
             'limit': '50',
-            'orderby': 'usd_market_cap',
+            'orderby': 'created_timestamp',
             'direction': 'desc',
             'new_creation': 'true',
             'max_marketcap': '10000',
@@ -233,6 +273,7 @@ async def send_new_created_coins(channel):
             valid_addresses = {item['address'] for item in data['data']['rank']}
             for item in data['data']['rank']:
                 await send_or_update_embed(channel, item, "🌟 Newly Created Coin", sent_new_messages)
+                seen_coins[(item['name'], item['symbol'])] = item['address']
             await delete_old_messages(channel, valid_addresses, sent_new_messages)
     except Exception as e:
         logging.error(f"Error in send_new_created_coins: {e}")
