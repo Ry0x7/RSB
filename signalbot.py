@@ -147,7 +147,6 @@ async def send_new_created_coins(channel):
         'orderby': 'created_timestamp',
         'direction': 'desc',
         'new_creation': 'true',
-        'min_marketcap': '4000',
         'max_marketcap': '10000',
         'min_holder_count': '15',
     }
