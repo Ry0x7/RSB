@@ -5,7 +5,7 @@ import aiojobs
 from datetime import datetime, timedelta
 import asyncio
 import random
-import
+
 
 # Correct token and default_scope initialization
 bot = interactions.Client(
