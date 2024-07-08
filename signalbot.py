@@ -349,7 +349,14 @@ async def soaring(ctx):
         await ctx.send('Started sending soaring coin information. 📈', ephemeral=True)
     except Exception as e:
         logging.error(f"Error in soaring command: {e}")
-        
+
+@interactions.slash_command(
+    name="completing",
+    description="Start sending completing coin information.",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False
+)
+
 async def completing(ctx):
     try:
         if not await admin_command(ctx):
