@@ -247,10 +247,10 @@ async def send_soaring_coins(channel):
             'orderby': 'progress',
             'direction': 'desc',
             'soaring': 'true',
-            'min_marketcap': '7000',
+            'min_marketcap': '9000',
+            'max_marketcap': '30000',
             'filters[]': 'has_socials',
             'min_holder_count': '50',
-            'min_progress': '0.4',
         }
         url = build_query_url(BASE_URL, params)
         data = fetch_data(url)
