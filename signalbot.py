@@ -90,7 +90,7 @@ def format_embed(item, title, updated=False):
         return None
 
     top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
-    if top_10_holder_rate >= 35:
+    if top_10_holder_rate >= 40:
         return None
 
     embed_title = title
@@ -194,7 +194,7 @@ def format_embed(item, title, updated=False):
     )
 
     embed.add_field(
-        name="Support",
+        name="Donations & Business Inquiries",
         value=donation_message,
         inline=False
     )
@@ -250,7 +250,7 @@ async def send_soaring_coins(channel):
             'min_marketcap': '7000',
             'filters[]': 'has_socials',
             'min_holder_count': '50',
-            'min_progress': '0.5',
+            'min_progress': '0.4',
         }
         url = build_query_url(BASE_URL, params)
         data = fetch_data(url)
