@@ -244,13 +244,13 @@ async def send_soaring_coins(channel):
     try:
         params = {
             'limit': '50',
-            'orderby': 'usd_market_cap',
+            'orderby': 'progress',
             'direction': 'desc',
             'soaring': 'true',
-            'min_marketcap': '5000',
-            'max_marketcap': '30000',
-            'min_holder_count': '25',
-            'min_volume': '2000',
+            'min_marketcap': '7000',
+            'filters[]': 'has_socials',
+            'min_holder_count': '50',
+            'min_progress': '0.5',
         }
         url = build_query_url(BASE_URL, params)
         data = fetch_data(url)
@@ -275,6 +275,7 @@ async def send_completing_coins(channel):
             'min_marketcap': '30000',
             'max_marketcap': '59000',
             'min_holder_count': '100',
+            'filters[]': 'has_socials',
             'min_volume': '2000',
         }
         url = build_query_url(BASE_URL, params)
@@ -297,7 +298,9 @@ async def send_new_created_coins(channel):
             'orderby': 'usd_market_cap',
             'direction': 'desc',
             'new_creation': 'true',
-            'max_marketcap': '10000',
+            'filters[]': 'has_socials',
+            'min_marketcap': '7000',
+            'max_marketcap': '25000',
             'min_holder_count': '20',
         }
         url = build_query_url(BASE_URL, params)
