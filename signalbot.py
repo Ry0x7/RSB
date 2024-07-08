@@ -17,6 +17,7 @@ REPLY_API_BASE_URL = 'https://frontend-api.pump.fun/replies/'
 
 last_soaring_data = None
 last_new_data = None
+last_completing_data = None
 owner_username = "chakazzz"
 
 logging.basicConfig(level=logging.INFO)
@@ -24,10 +25,13 @@ logging.basicConfig(level=logging.INFO)
 # Dictionary to keep track of running tasks and sent messages
 running_tasks = {
     "soaring": {},
-    "new": {}
+    "new": {},
+    "completing": {}
+    
 }
 sent_soaring_messages = {}
 sent_new_messages = {}
+sent_completing_messages = {}
 
 seen_coins = {}
 
@@ -111,8 +115,8 @@ def format_embed(item, title, updated=False):
             parts = reply['text'].split("CTO IS HERE")
             if len(parts) > 1:
                 cto_telegram = parts[1].split()[0]
-        elif "CTO" in reply['text']:
-            parts = reply['text'].split("CTO")
+        elif "CTO: " in reply['text']:
+            parts = reply['text'].split("CTO: ")
             if len(parts) > 1:
                 cto_telegram = parts[1].split()[0]
         pumpfun_profile = f"https://pump.fun/profile/{reply['user']}"
@@ -131,7 +135,8 @@ def format_embed(item, title, updated=False):
     photon_link = f"https://photon-sol.tinyastro.io/en/r/@RickBurpBot/{item['address']}"
     bullx_link = f"https://bullx.io/terminal?chainId=1399811149&address={item['address']}&r=M7B0AY33YBS"
     solscan_dev_link = f"https://solscan.io/account/{item['creator']}"
-    dex_paid = item.get('dexscr_ad', 0) == 1
+    dex_ad = item.get('dexscr_ad', 0) == 1
+    dex_paid = item.get('dexscr_update_link', 0) == 1
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
     holder_count = item.get('holder_count', 'N/A')
@@ -259,6 +264,31 @@ async def send_soaring_coins(channel):
     except Exception as e:
         logging.error(f"Error in send_soaring_coins: {e}")
 
+async def send_completing_coins(channel):
+    global last_completing_data
+    try:
+        params = {
+            'limit': '50',
+            'orderby': 'usd_market_cap',
+            'direction': 'desc',
+            'pump': 'true',
+            'min_marketcap': '30000',
+            'max_marketcap': '59000',
+            'min_holder_count': '100',
+            'min_volume': '2000',
+        }
+        url = build_query_url(BASE_URL, params)
+        data = fetch_data(url)
+        if data and data['data']['rank'] != last_completing_data:
+            last_completing_data = data['data']['rank']
+            valid_addresses = {item['address'] for item in data['data']['rank']}
+            for item in data['data']['rank']:
+                await send_or_update_embed(channel, item, "🚀 BOUT TO RAY!", sent_completing_messages)
+                seen_coins[(item['name'], item['symbol'])] = item['address']
+            await delete_old_messages(channel, valid_addresses, sent_completing_messages)
+    except Exception as e:
+        logging.error(f"Error in send_completing_coins: {e}")
+
 async def send_new_created_coins(channel):
     global last_new_data
     try:
@@ -316,6 +346,19 @@ async def soaring(ctx):
         await ctx.send('Started sending soaring coin information. 📈', ephemeral=True)
     except Exception as e:
         logging.error(f"Error in soaring command: {e}")
+        
+async def completing(ctx):
+    try:
+        if not await admin_command(ctx):
+            await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+            return
+        await ctx.send('Grabbing Completing Coins for the BAGSS! 👜', ephemeral=True)
+        scheduler = await aiojobs.create_scheduler()
+        task = await scheduler.spawn(loop_send_completing_coins(ctx.channel))
+        running_tasks["completing"][ctx.channel.id] = task
+        await ctx.send('Started sending completing coin information. 📈', ephemeral=True)
+    except Exception as e:
+        logging.error(f"Error in completing command: {e}")
 
 @interactions.slash_command(
     name="new",
@@ -348,7 +391,7 @@ async def stop(ctx):
             await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
             return
         stopped_any = False
-        for task_type in ["soaring", "new"]:
+        for task_type in ["soaring", "new", "completing"]:
             if ctx.channel.id in running_tasks[task_type]:
                 await running_tasks[task_type][ctx.channel.id].close()
                 del running_tasks[task_type][ctx.channel.id]
@@ -371,13 +414,15 @@ async def reboot(ctx):
         if not await admin_command(ctx):
             await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
             return
-        for task_type in ["soaring", "new"]:
+        for task_type in ["soaring", "new", "completing"]:
             if ctx.channel.id in running_tasks[task_type]:
                 await running_tasks[task_type][ctx.channel.id].close()
                 del running_tasks[task_type][ctx.channel.id]
         scheduler = await aiojobs.create_scheduler()
         task = await scheduler.spawn(loop_send_soaring_coins(ctx.channel))
         running_tasks["soaring"][ctx.channel.id] = task
+        task = await scheduler.spawn(loop_send_completing_coins(ctx.channel))
+        running_tasks["completing"][ctx.channel.id] = task
         await ctx.send('Rebooted the coin information sending loops. 🔄', ephemeral=True)
     except Exception as e:
         logging.error(f"Error in reboot command: {e}")
@@ -390,6 +435,14 @@ async def loop_send_soaring_coins(channel):
             logging.error(f"Error in loop_send_soaring_coins: {e}")
         await asyncio.sleep(4)  # Wait for 4 seconds before sending the next update
 
+async def loop_send_completing_coins(channel):
+    while True:
+        try:
+            await send_completing_coins(channel)
+        except Exception as e:
+            logging.error(f"Error in loop_send_completing_coins: {e}")
+        await asyncio.sleep(4)  # Wait for 4 seconds before sending the next update
+
 async def loop_send_new_created_coins(channel):
     while True:
         try:
@@ -400,7 +453,7 @@ async def loop_send_new_created_coins(channel):
 
 async def monitor_tasks():
     while True:
-        for task_type in ["soaring", "new"]:
+        for task_type in ["soaring", "new", "completing"]:
             for channel_id, task in list(running_tasks[task_type].items()):
                 if task.done():
                     logging.warning(f"Task for channel {channel_id} has stopped. Restarting {task_type} task...")
@@ -408,8 +461,10 @@ async def monitor_tasks():
                     scheduler = await aiojobs.create_scheduler()
                     if task_type == "soaring":
                         new_task = await scheduler.spawn(loop_send_soaring_coins(channel))
-                    else:
+                    elif task_type == "new":
                         new_task = await scheduler.spawn(loop_send_new_created_coins(channel))
+                    elif task_type == "completing":
+                        new_task = await scheduler.spawn(loop_send_completing_coins(channel))
                     running_tasks[task_type][channel_id] = new_task
         await asyncio.sleep(60)  # Check every minute
 
