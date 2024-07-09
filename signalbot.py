@@ -318,7 +318,7 @@ async def on_ready():
 async def admin_command(ctx):
     guild = await bot.fetch_guild(ctx.guild_id)
     member = await guild.fetch_member(ctx.author.id)
-    return ctx.author.username == owner_username or member.permissions.has(interactions.Permissions.MANAGE_GUILD)
+    return ctx.author.username == owner_username or member.permissions.has(interactions.Permissions.MANAGE_GUILD | interactions.Permissions.MANAGE_CHANNELS)
 
 async def start_task(ctx, task_type):
     if not await admin_command(ctx):
@@ -336,7 +336,7 @@ async def start_task(ctx, task_type):
 @interactions.slash_command(
     name="soaring",
     description="Start sending soaring coin information.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD | interactions.Permissions.MANAGE_CHANNELS,
     dm_permission=False
 )
 async def soaring(ctx):
@@ -345,7 +345,7 @@ async def soaring(ctx):
 @interactions.slash_command(
     name="completing",
     description="Start sending completing coin information.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD | interactions.Permissions.MANAGE_CHANNELS,
     dm_permission=False
 )
 async def completing(ctx):
@@ -354,7 +354,7 @@ async def completing(ctx):
 @interactions.slash_command(
     name="new",
     description="Start sending newly created coin information.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD | interactions.Permissions.MANAGE_CHANNELS,
     dm_permission=False
 )
 async def new(ctx):
@@ -363,7 +363,7 @@ async def new(ctx):
 @interactions.slash_command(
     name="stop",
     description="Stop sending token information.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD | interactions.Permissions.MANAGE_CHANNELS,
     dm_permission=False
 )
 async def stop(ctx):
@@ -387,7 +387,7 @@ async def stop(ctx):
 @interactions.slash_command(
     name="reboot",
     description="Reboot the coin information sending loops.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD | interactions.Permissions.MANAGE_CHANNELS,
     dm_permission=False
 )
 async def reboot(ctx):
