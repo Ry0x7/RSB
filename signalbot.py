@@ -182,13 +182,18 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'} | 🛠️ **Dev Sold?:** {dev_sold}\n"
         f"📈 **Bonding Curve Progress:** `{progress:.2f}%`  📊 **5-Min Volume:** `${volume_5m}`\n"
         f"---\n"
-        f"First seen at `${seen_coins[coin_key]['called_mcap']}` ({percentage_change} )\n"
+        f"👁️ First seen at `${seen_coins[coin_key]['called_mcap']}`|`({percentage_change}` )\n"
         f"---\n"
         f"```{item['address']}```\n"
         f"[PHOTON: {item['address']}]({photon_link})\n"
         f"[BULLX: {item['address']}]({bullx_link})\n"
-        
     )
+
+    if percentage_change:
+        if percentage_change.startswith('-'):
+            field_value += "🔴"
+        else:
+            field_value += "🟢"
 
     if reply:
         field_value += (
@@ -226,7 +231,7 @@ async def send_or_update_embed(channel, item, title, task_type):
     trend = ""
     percentage_change = ""
     if updated:
-        previous_mcap = seen_coins[(item['name'], item['symbol'])]['market_cap']
+        previous_mcap = seen_coins[(item['name'], item['symbol'])]['called_mcap']
         current_mcap = int(item['usd_market_cap'])
         percentage_change = calculate_percentage_change(seen_coins[(item['name'], item['symbol'])]['called_mcap'], current_mcap)
         if current_mcap > previous_mcap:
