@@ -332,6 +332,7 @@ async def send_coins(channel, task_type):
                 else:
                     seen_coins[coin_key]['market_cap'] = int(item['usd_market_cap'])
                 await send_or_update_embed(channel, item, f"🚀 {task_type.capitalize()} Coin", task_type)
+                await asyncio.sleep(10)  # Delay added here for each check if a coin has a CTO or not
             await delete_old_messages(channel, valid_addresses, task_type)
     except Exception as e:
         logging.error(f"Error in send_coins: {e}")
