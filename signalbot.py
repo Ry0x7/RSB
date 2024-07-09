@@ -295,8 +295,9 @@ async def send_coins(channel, task_type):
             'direction': 'desc',
             'new_creation': 'true',
             'filters[]': 'has_socials',
-            'min_marketcap': '3800',
-            'max_marketcap': '10000',
+            'min_marketcap': '4000',
+            'max_marketcap': '15000',
+            'min_volume': '1000',
             'min_holder_count': '18',
         },
         "completing": {
@@ -363,6 +364,9 @@ async def admin_command(ctx):
 async def start_task(ctx, task_type):
     if not await admin_command(ctx):
         await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+        return
+    if ctx.channel.id in running_tasks[task_type]:
+        await ctx.send(f'Task {task_type.capitalize()} is already running in this channel.', ephemeral=True)
         return
     await ctx.send(f'Grabbing {task_type.capitalize()} Coins for the BAGSS! 👜', ephemeral=True)
     scheduler = await aiojobs.create_scheduler()
@@ -476,13 +480,9 @@ async def leaderboard(ctx):
         logging.error(f"Error in leaderboard command: {e}")
 
 async def loop_send_coins(channel, task_type):
-    task_types = ["soaring", "new", "completing"]
-    task_index = task_types.index(task_type)
     while True:
         try:
             await send_coins(channel, task_type)
-            task_index = (task_index + 1) % len(task_types)
-            task_type = task_types[task_index]
         except Exception as e:
             logging.error(f"Error in loop_send_coins for {task_type}: {e}")
         await asyncio.sleep(4)
