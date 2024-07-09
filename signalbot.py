@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import asyncio
 import dotenv
 import os
+import sqlite3
 
 dotenv.load_dotenv()
 
@@ -14,6 +15,7 @@ bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
 
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
 REPLY_API_BASE_URL = 'https://frontend-api.pump.fun/replies/'
+TOKEN_SEARCH_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/sol/search?q='
 
 last_soaring_data = None
 last_new_data = None
@@ -27,13 +29,19 @@ running_tasks = {
     "soaring": {},
     "new": {},
     "completing": {}
-    
 }
 sent_soaring_messages = {}
 sent_new_messages = {}
 sent_completing_messages = {}
 
 seen_coins = {}
+
+# Database setup
+conn = sqlite3.connect('coins.db')
+c = conn.cursor()
+c.execute('''CREATE TABLE IF NOT EXISTS coins
+             (address TEXT PRIMARY KEY, name TEXT, symbol TEXT, called_mcap INTEGER, called_at TIMESTAMP, above_100k_at TIMESTAMP)''')
+conn.commit()
 
 def fetch_data(url):
     logging.info(f"Fetching data from URL: {url}")
@@ -126,6 +134,20 @@ def format_embed(item, title, updated=False):
             f"**CTO Lead:** [Profile]({pumpfun_profile})\n"
             f"**Sent last:** {time_since_message}\n"
         )
+
+    # Fetch token data to check bonding curve and market cap
+    token_data = fetch_data(TOKEN_SEARCH_URL + item['address'])
+    if token_data and 'data' in token_data and 'usd_market_cap' in token_data['data']:
+        usd_market_cap = token_data['data']['usd_market_cap']
+        bonding_curve = token_data['data']['bonding_curve_progress']
+
+        # Update leaderboard if market cap exceeds 100k
+        if usd_market_cap >= 100000:
+            c.execute('''UPDATE coins SET above_100k_at = ? WHERE address = ?''', (datetime.utcnow(), item['address']))
+            conn.commit()
+
+        if bonding_curve >= 98.92:
+            embed_title += " 🚀 Bonding Curve 98.92%"
 
     embed = interactions.Embed(
         title=embed_title,
@@ -225,6 +247,12 @@ async def send_or_update_embed(channel, item, title, sent_messages):
         else:
             message = await channel.send(embeds=[embed])
             sent_messages[item['address']] = message.id
+
+            # Insert into database
+            called_at = datetime.utcnow()
+            c.execute('''INSERT OR IGNORE INTO coins (address, name, symbol, called_mcap, called_at) VALUES (?, ?, ?, ?, ?)''',
+                      (item['address'], item['name'], item['symbol'], item['usd_market_cap'], called_at))
+            conn.commit()
     except Exception as e:
         logging.error(f"Error in send_or_update_embed: {e}")
 
