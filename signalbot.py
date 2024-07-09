@@ -54,10 +54,15 @@ seen_coins = {}
 
 def fetch_data(url):
     logging.info(f"Fetching data from URL: {url}")
-    response = requests.get(url)
-    logging.info(f"Received response with status code: {response.status_code}")
-    if response.status_code == 200:
-        return response.json()
+    try:
+        response = requests.get(url)
+        logging.info(f"Received response with status code: {response.status_code}")
+        if response.status_code == 200:
+            return response.json()
+        else:
+            logging.error(f"Error fetching data from {url}: {response.status_code} {response.text}")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Request exception occurred: {e}")
     return None
 
 def fetch_replies(token_address):
@@ -129,9 +134,6 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         embed_title = f"{trend} {title}"
 
     coin_key = (item['name'], item['symbol'])
-    is_duplicate = coin_key in seen_coins and seen_coins[coin_key] != item['address']
-    if is_duplicate:
-        embed_title += " (Duplicated Coin)"
 
     reply = fetch_replies(item['address'])
     cto_info = ""
@@ -293,9 +295,8 @@ async def send_coins(channel, task_type):
             'direction': 'desc',
             'new_creation': 'true',
             'filters[]': 'has_socials',
-            'min_marketcap': '4000',
+            'min_marketcap': '3800',
             'max_marketcap': '15000',
-            'min_volume': '1000',
             'min_holder_count': '18',
         },
         "completing": {
@@ -345,6 +346,8 @@ def fetch_current_market_cap(address):
     data = fetch_data(url)
     if data and 'data' in data and len(data['data']) > 0:
         return int(data['data'][0]['usd_market_cap'])
+    else:
+        logging.error(f"No valid data returned for address {address}")
     return None
 
 @bot.event
