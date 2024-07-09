@@ -108,7 +108,13 @@ def get_time_since_message(timestamp):
     else:
         return f"{time_diff.days} days ago"
 
-def format_embed(item, title, task_type, updated=False):
+def calculate_percentage_change(original, current):
+    if original == 0:
+        return "N/A"
+    change = ((current - original) / original) * 100
+    return f"{change:.2f}%"
+
+def format_embed(item, title, task_type, updated=False, trend="", percentage_change=""):
     if not item['address'].endswith('pump'):
         return None
 
@@ -118,7 +124,7 @@ def format_embed(item, title, task_type, updated=False):
 
     embed_title = title
     if updated:
-        embed_title = f"Updated {title}"
+        embed_title = f"{trend} {title}"
 
     coin_key = (item['name'], item['symbol'])
     is_duplicate = coin_key in seen_coins and seen_coins[coin_key] != item['address']
@@ -132,7 +138,7 @@ def format_embed(item, title, task_type, updated=False):
         user_data = fetch_user_data(reply['user'])
         if user_data and user_data['likes_received'] > 100 and user_data['mentions_received'] > 10 and user_data['followers'] > 10:
             cto_info = (
-                f"**CTO Username (⚠️Verify!⚠️):** {user_data['username']}\n"
+                f"**CTO Username (Verify First):** {user_data['username']}\n"
                 f"[Profile](https://pump.fun/profile/{reply['user']})\n"
                 f"**Sent:** {get_time_since_message(reply['timestamp'])}\n"
             )
@@ -163,13 +169,9 @@ def format_embed(item, title, task_type, updated=False):
     website_link = f"[Web]({website if website.startswith('http') else 'https://' + website})" if website else ""
     telegram_link = f"[TG]({telegram if telegram.startswith('http') else 'https://' + telegram})" if telegram else ""
 
-
     social_links = " | ".join(filter(None, [telegram_link, twitter_link, website_link]))
     if social_links:
         social_links = f"SOCIALS = {social_links}"
-
-    uptrend = "Uptrend 📈" if updated and item['usd_market_cap'] > seen_coins[coin_key]['market_cap'] else ""
-    downtrend = "Downtrend 📉" if updated and item['usd_market_cap'] < seen_coins[coin_key]['market_cap'] else ""
 
     field_value = (
         f"{social_links}\n"
@@ -179,12 +181,11 @@ def format_embed(item, title, task_type, updated=False):
         f"👥 **Holders:** `{holder_count}` 💬 **Replies** `{reply_count}` 🏆 **Top 10** `{top_10_holder_rate:.2f}%`\n"
         f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'} | 🛠️ **Dev Sold?:** {dev_sold}\n"
         f"📈 **Bonding Curve Progress:** `{progress:.2f}%`  📊 **5-Min Volume:** `${volume_5m}`\n"
-        f"{uptrend} {downtrend}\n"
         f"---\n"
         f"```{item['address']}```\n"
         f"[PHOTON: {item['address']}]({photon_link})\n"
         f"[BULLX: {item['address']}]({bullx_link})\n"
-        f"Last Seen At `${seen_coins[coin_key]['called_mcap']}`\n"
+        f"First seen at ${seen_coins[coin_key]['called_mcap']} ({percentage_change} change)\n"
     )
 
     if reply:
@@ -220,7 +221,19 @@ def format_embed(item, title, task_type, updated=False):
 async def send_or_update_embed(channel, item, title, task_type):
     sent_messages_task = sent_messages[task_type]
     updated = item['address'] in sent_messages_task
-    embed = format_embed(item, title, task_type, updated)
+    trend = ""
+    percentage_change = ""
+    if updated:
+        previous_mcap = seen_coins[(item['name'], item['symbol'])]['market_cap']
+        current_mcap = int(item['usd_market_cap'])
+        percentage_change = calculate_percentage_change(seen_coins[(item['name'], item['symbol'])]['called_mcap'], current_mcap)
+        if current_mcap > previous_mcap:
+            trend = "Uptrend 📈"
+        elif current_mcap < previous_mcap:
+            trend = "Downtrend 📉"
+        seen_coins[(item['name'], item['symbol'])]['market_cap'] = current_mcap
+
+    embed = format_embed(item, title, task_type, updated, trend, percentage_change)
     if not embed:
         return
     
@@ -300,8 +313,9 @@ async def send_coins(channel, task_type):
             last_data[task_type] = data['data']['rank']
             valid_addresses = {item['address'] for item in data['data']['rank']}
             for item in data['data']['rank']:
-                if (item['name'], item['symbol']) not in seen_coins:
-                    seen_coins[(item['name'], item['symbol'])] = {
+                coin_key = (item['name'], item['symbol'])
+                if coin_key not in seen_coins:
+                    seen_coins[coin_key] = {
                         'address': item['address'],
                         'called_mcap': int(item['usd_market_cap']),
                         'market_cap': int(item['usd_market_cap'])
@@ -310,7 +324,7 @@ async def send_coins(channel, task_type):
                               (item['address'], item['name'], item['symbol'], int(item['usd_market_cap']), datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')))
                     conn.commit()
                 else:
-                    seen_coins[(item['name'], item['symbol'])]['market_cap'] = int(item['usd_market_cap'])
+                    seen_coins[coin_key]['market_cap'] = int(item['usd_market_cap'])
                 await send_or_update_embed(channel, item, f"🚀 {task_type.capitalize()} Coin", task_type)
             await delete_old_messages(channel, valid_addresses, task_type)
     except Exception as e:
@@ -330,7 +344,7 @@ async def on_ready():
 async def admin_command(ctx):
     guild = await bot.fetch_guild(ctx.guild_id)
     member = await guild.fetch_member(ctx.author.id)
-    return ctx.author.username == owner_username or any(role.permissions & interactions.Permissions.MANAGE_GUILD for role in member.roles)
+    return ctx.author.username == owner_username or member.permissions.has(interactions.Permissions.MANAGE_GUILD)
 
 async def start_task(ctx, task_type):
     if not await admin_command(ctx):
