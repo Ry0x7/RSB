@@ -124,13 +124,31 @@ def format_embed(item, title, task_type, updated=False):
     is_duplicate = coin_key in seen_coins and seen_coins[coin_key] != item['address']
     if is_duplicate:
         embed_title += " (Duplicated Coin)"
+
+    # Fetch the initial called market cap and update it in the database if necessary
+    c.execute("SELECT called_mcap FROM coins WHERE address = ?", (item['address'],))
+    result = c.fetchone()
+    if result is None:
+        called_mcap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 0
+        called_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+        c.execute("INSERT INTO coins (address, name, symbol, called_mcap, called_at) VALUES (?, ?, ?, ?, ?)",
+                  (item['address'], item['name'], item['symbol'], called_mcap, called_at))
+        conn.commit()
+    else:
+        called_mcap = result[0]
     
+    mcap_change = ""
     if updated:
-        previous_mcap = seen_coins.get(coin_key, {}).get('mcap', item['usd_market_cap'])
-        trend = "Uptrend 📈" if item['usd_market_cap'] > previous_mcap else "Downtrend📉"
-        embed_title = f"{embed_title} ({trend})"
-    
-    seen_coins[coin_key] = {'address': item['address'], 'mcap': item['usd_market_cap']}
+        current_mcap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 0
+        if current_mcap > called_mcap:
+            mcap_change = "📈 Uptrend"
+        elif current_mcap < called_mcap:
+            mcap_change = "📉 Downtrend"
+
+    if current_mcap >= 50000:
+        embed_title += " 💸"
+    if current_mcap >= 100000:
+        embed_title += " 👑"
 
     reply = fetch_replies(item['address'])
     cto_info = ""
@@ -174,9 +192,6 @@ def format_embed(item, title, task_type, updated=False):
     if social_links:
         social_links = f"SOCIALS = {social_links}"
 
-    first_called_mcap = seen_coins[coin_key].get('first_called_mcap', item['usd_market_cap'])
-    seen_coins[coin_key]['first_called_mcap'] = first_called_mcap
-
     field_value = (
         f"{social_links}\n"
         f"👤 **[Creator Address]({solscan_dev_link})**\n"
@@ -189,8 +204,6 @@ def format_embed(item, title, task_type, updated=False):
         f"```{item['address']}```\n"
         f"[PHOTON: {item['address']}]({photon_link})\n"
         f"[BULLX: {item['address']}]({bullx_link})\n"
-        f"---\n"
-        f"**First Called at MCAP:** ${first_called_mcap:,}\n"
     )
 
     if reply:
@@ -204,7 +217,7 @@ def format_embed(item, title, task_type, updated=False):
         field_value = field_value[:1021] + "..."
         
     embed.add_field(
-        name=f"{item['name']} ({item['symbol']})",
+        name=f"{item['name']} ({item['symbol']}) First called at ${called_mcap:,}",
         value=field_value,
         inline=False
     )
@@ -420,16 +433,12 @@ async def leaderboard(ctx):
     try:
         c.execute("SELECT name, symbol, called_mcap, called_at FROM coins WHERE called_mcap > 100000 ORDER BY called_mcap DESC LIMIT 10")
         rows = c.fetchall()
+        leaderboard_text = "\n".join([f"{row[0]} ({row[1]}) - ${row[2]:,} (Called at {row[3]})" for row in rows])
         embed = interactions.Embed(
-            title="Leaderboard of Coins with Highest Market Caps",
+            title="🏆 Leaderboard of Coins with Highest Market Caps",
+            description=leaderboard_text,
             color=0xFFD700
         )
-        for row in rows:
-            embed.add_field(
-                name=f"{row[0]} ({row[1]})",
-                value=f"${row[2]:,} (Called at {row[3]})",
-                inline=False
-            )
         await ctx.send(embeds=[embed], ephemeral=True)
     except Exception as e:
         logging.error(f"Error in leaderboard command: {e}")
