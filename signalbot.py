@@ -117,9 +117,6 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         color=0x00ff00
     )
 
-    photon_link = f"https://photon-sol.tinyastro.io/en/r/@RickBurpBot/{item['address']}"
-    bullx_link = f"https://bullx.io/terminal?chainId=1399811149&address={item['address']}&r=M7B0AY33YBS"
-    pumpfun_link = f"https://pump.fun/{item['address']}"
     dex_ad = item.get('dexscr_ad', 0) == 1
     dex_paid = item.get('dexscr_update_link', 0) == 1
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
@@ -144,7 +141,6 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
 
     field_value = (
         f"{social_links}\n"
-        f"💊 **[PumpFun]({pumpfun_link})**\n"
         f"---\n"
         f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}`\n"
         f"👥 **Holders:** `{holder_count}` 💬 **Replies** `{reply_count}` 🏆 **Top 10** `{top_10_holder_rate:.2f}%`\n"
@@ -154,8 +150,6 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         f"👁️ First seen at `${seen_coins[coin_key]['called_mcap']}` | `{percentage_change} {trend_indicator}`\n"
         f"---\n"
         f"```{item['address']}```\n"
-        f"[PHOTON: {item['address']}]({photon_link})\n"
-        f"[BULLX: {item['address']}]({bullx_link})\n"
     )
 
     if len(field_value) > 1024:
@@ -203,22 +197,42 @@ async def send_or_update_embed(channel, item, title, task_type):
         return
     
     try:
+        button_photon = interactions.Button(
+            style=interactions.ButtonStyle.LINK,
+            label="Photon",
+            url=f"https://photon-sol.tinyastro.io/en/r/@RickBurpBot/{item['address']}"
+        )
+        button_bullx = interactions.Button(
+            style=interactions.ButtonStyle.LINK,
+            label="BullX",
+            url=f"https://bullx.io/terminal?chainId=1399811149&address={item['address']}&r=M7B0AY33YBS"
+        )
+        button_address = interactions.Button(
+            style=interactions.ButtonStyle.PRIMARY,
+            label="Get Address",
+            custom_id=f"get_address_{item['address']}"
+        )
+
+        components = [
+            interactions.ActionRow(components=[button_photon, button_address, button_bullx])
+        ]
+
         if updated:
             message_id = sent_messages_task[item['address']]
             try:
                 message = await channel.fetch_message(message_id)
                 if message is not None:
-                    await message.edit(embeds=[embed])
+                    await message.edit(embeds=[embed], components=components)
                 else:
                     del sent_messages_task[item['address']]
-                    message = await channel.send(embeds=[embed])
+                    message = await channel.send(embeds=[embed], components=components)
                     sent_messages_task[item['address']] = message.id
             except interactions.errors.NotFound:
                 del sent_messages_task[item['address']]
-                message = await channel.send(embeds=[embed])
+                message = await channel.send(embeds=[embed], components=components)
                 sent_messages_task[item['address']] = message.id
         else:
-            message = await channel.send(embeds=[embed])
+            message = await channel.send(embeds=[embed], components=components)
             sent_messages_task[item['address']] = message.id
     except Exception as e:
         logging.error(f"Error in send_or_update_embed: {e}")
@@ -457,5 +471,10 @@ async def monitor_tasks():
                     new_task = await scheduler.spawn(loop_send_coins(channel, task_type))
                     running_tasks[task_type][channel_id] = new_task
         await asyncio.sleep(60)
+
+@interactions.component_callback("get_address_*")
+async def handle_get_address(ctx: interactions.ComponentContext):
+    address = ctx.custom_id.split('_')[-1]
+    await ctx.send(f"Coin Address: {address}", ephemeral=True)
 
 bot.start()
