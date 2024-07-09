@@ -243,6 +243,7 @@ async def send_coins(channel, task_type):
             'orderby': 'progress',
             'direction': 'desc',
             'soaring': 'true',
+            'min_volume': '2500',
             'min_marketcap': '9000',
             'max_marketcap': '30000',
             'filters[]': 'has_socials',
