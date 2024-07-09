@@ -16,6 +16,7 @@ bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
 REPLY_API_BASE_URL = 'https://frontend-api.pump.fun/replies/'
 USER_API_BASE_URL = 'https://frontend-api.pump.fun/users/'
+TOKEN_SEARCH_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/sol/search?q='
 
 last_data = {
     "soaring": None,
@@ -78,6 +79,13 @@ def fetch_replies(token_address):
 
 def fetch_user_data(user_id):
     url = f"{USER_API_BASE_URL}{user_id}"
+    response = fetch_data(url)
+    if response:
+        return response
+    return None
+
+def fetch_token_data(address):
+    url = f"{TOKEN_SEARCH_URL}{address}"
     response = fetch_data(url)
     if response:
         return response
@@ -345,7 +353,7 @@ async def on_ready():
 async def admin_command(ctx):
     guild = await bot.fetch_guild(ctx.guild_id)
     member = await guild.fetch_member(ctx.author.id)
-    return ctx.author.username == owner_username or any(role.permissions & interactions.Permissions.MANAGE_GUILD for role in member.roles)
+    return ctx.author.username == owner_username or member.permissions.has(interactions.Permissions.MANAGE_GUILD)
 
 async def start_task(ctx, task_type):
     if not await admin_command(ctx):
