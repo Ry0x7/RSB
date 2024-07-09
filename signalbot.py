@@ -249,6 +249,12 @@ async def send_or_update_embed(channel, item, title, task_type):
             try:
                 message = await channel.fetch_message(message_id)
                 if message is not None:
+                    current_mcap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 0
+                    called_mcap = int(item['called_mcap'])
+                    if current_mcap > called_mcap:
+                        embed.title += " 📈"
+                    elif current_mcap < called_mcap:
+                        embed.title += " 📉"
                     await message.edit(embeds=[embed])
                 else:
                     del sent_messages_task[item['address']]
