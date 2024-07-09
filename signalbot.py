@@ -182,10 +182,12 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'} | 🛠️ **Dev Sold?:** {dev_sold}\n"
         f"📈 **Bonding Curve Progress:** `{progress:.2f}%`  📊 **5-Min Volume:** `${volume_5m}`\n"
         f"---\n"
+        f"First seen at `${seen_coins[coin_key]['called_mcap']}` ({percentage_change} )\n"
+        f"---\n"
         f"```{item['address']}```\n"
         f"[PHOTON: {item['address']}]({photon_link})\n"
         f"[BULLX: {item['address']}]({bullx_link})\n"
-        f"First seen at ${seen_coins[coin_key]['called_mcap']} ({percentage_change} change)\n"
+        
     )
 
     if reply:
