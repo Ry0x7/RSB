@@ -154,7 +154,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
 
     photon_link = f"https://photon-sol.tinyastro.io/en/r/@RickBurpBot/{item['address']}"
     bullx_link = f"https://bullx.io/terminal?chainId=1399811149&address={item['address']}&r=M7B0AY33YBS"
-    solscan_dev_link = f"https://solscan.io/account/{item['creator']}"
+    pumpfun_link = f"https://pump.fun/{item['address']}"
     dex_ad = item.get('dexscr_ad', 0) == 1
     dex_paid = item.get('dexscr_update_link', 0) == 1
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
@@ -179,7 +179,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
 
     field_value = (
         f"{social_links}\n"
-        f"👤 **[Creator Address]({solscan_dev_link})**\n"
+        f"👤 **[PumpFun]({pumpfun_link})**\n"
         f"---\n"
         f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}`\n"
         f"👥 **Holders:** `{holder_count}` 💬 **Replies** `{reply_count}` 🏆 **Top 10** `{top_10_holder_rate:.2f}%`\n"
