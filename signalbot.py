@@ -16,7 +16,6 @@ bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
 REPLY_API_BASE_URL = 'https://frontend-api.pump.fun/replies/'
 USER_API_BASE_URL = 'https://frontend-api.pump.fun/users/'
-TOKEN_SEARCH_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/sol/search?q='
 
 last_data = {
     "soaring": None,
@@ -84,13 +83,6 @@ def fetch_user_data(user_id):
         return response
     return None
 
-def fetch_token_data(address):
-    url = f"{TOKEN_SEARCH_URL}{address}"
-    response = fetch_data(url)
-    if response:
-        return response
-    return None
-
 def get_time_since_creation(created_timestamp):
     created_time = datetime.utcfromtimestamp(created_timestamp)
     now = datetime.utcnow()
@@ -145,9 +137,9 @@ def format_embed(item, title, task_type, updated=False):
     else:
         called_mcap = result[0]
     
+    current_mcap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 0
     mcap_change = ""
     if updated:
-        current_mcap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 0
         if current_mcap > called_mcap:
             mcap_change = "📈 Uptrend"
         elif current_mcap < called_mcap:
@@ -258,11 +250,14 @@ async def send_or_update_embed(channel, item, title, task_type):
                 message = await channel.fetch_message(message_id)
                 if message is not None:
                     current_mcap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 0
-                    called_mcap = int(item['called_mcap'])
-                    if current_mcap > called_mcap:
-                        embed.title += " 📈"
-                    elif current_mcap < called_mcap:
-                        embed.title += " 📉"
+                    c.execute("SELECT called_mcap FROM coins WHERE address = ?", (item['address'],))
+                    result = c.fetchone()
+                    if result:
+                        called_mcap = result[0]
+                        if current_mcap > called_mcap:
+                            embed.title += " 📈"
+                        elif current_mcap < called_mcap:
+                            embed.title += " 📉"
                     await message.edit(embeds=[embed])
                 else:
                     del sent_messages_task[item['address']]
