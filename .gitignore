@@ -1,0 +1,6 @@
+# Ignore coins.db
+coins.db
+
+# Ignore .env file
+.env
+.venv
