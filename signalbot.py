@@ -15,14 +15,30 @@ bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
 
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
 REPLY_API_BASE_URL = 'https://frontend-api.pump.fun/replies/'
-TOKEN_SEARCH_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/sol/search?q='
+USER_API_BASE_URL = 'https://frontend-api.pump.fun/users/'
 
-last_soaring_data = None
-last_new_data = None
-last_completing_data = None
+last_data = {
+    "soaring": None,
+    "new": None,
+    "completing": None
+}
 owner_username = "chakazzz"
 
 logging.basicConfig(level=logging.INFO)
+
+# Initialize database
+conn = sqlite3.connect('coins.db')
+c = conn.cursor()
+c.execute('''
+    CREATE TABLE IF NOT EXISTS coins (
+        address TEXT PRIMARY KEY,
+        name TEXT,
+        symbol TEXT,
+        called_mcap INTEGER,
+        called_at TEXT
+    )
+''')
+conn.commit()
 
 # Dictionary to keep track of running tasks and sent messages
 running_tasks = {
@@ -30,18 +46,13 @@ running_tasks = {
     "new": {},
     "completing": {}
 }
-sent_soaring_messages = {}
-sent_new_messages = {}
-sent_completing_messages = {}
+sent_messages = {
+    "soaring": {},
+    "new": {},
+    "completing": {}
+}
 
 seen_coins = {}
-
-# Database setup
-conn = sqlite3.connect('coins.db')
-c = conn.cursor()
-c.execute('''CREATE TABLE IF NOT EXISTS coins
-             (address TEXT PRIMARY KEY, name TEXT, symbol TEXT, called_mcap INTEGER, called_at TIMESTAMP, above_100k_at TIMESTAMP)''')
-conn.commit()
 
 def fetch_data(url):
     logging.info(f"Fetching data from URL: {url}")
@@ -63,6 +74,13 @@ def fetch_replies(token_address):
                     latest_reply = reply
                     latest_timestamp = reply['timestamp']
         return latest_reply
+    return None
+
+def fetch_user_data(user_id):
+    url = f"{USER_API_BASE_URL}{user_id}"
+    response = fetch_data(url)
+    if response:
+        return response
     return None
 
 def get_time_since_creation(created_timestamp):
@@ -93,7 +111,7 @@ def get_time_since_message(timestamp):
     else:
         return f"{time_diff.days} days ago"
 
-def format_embed(item, title, updated=False):
+def format_embed(item, title, task_type, updated=False):
     if not item['address'].endswith('pump'):
         return None
 
@@ -102,52 +120,29 @@ def format_embed(item, title, updated=False):
         return None
 
     embed_title = title
-    if updated:
-        embed_title = f"Updated {title}"
-
     coin_key = (item['name'], item['symbol'])
     is_duplicate = coin_key in seen_coins and seen_coins[coin_key] != item['address']
     if is_duplicate:
         embed_title += " (Duplicated Coin)"
+    
+    if updated:
+        previous_mcap = seen_coins.get(coin_key, {}).get('mcap', item['usd_market_cap'])
+        trend = "Uptrend 📈" if item['usd_market_cap'] > previous_mcap else "Downtrend📉"
+        embed_title = f"{embed_title} ({trend})"
+    
+    seen_coins[coin_key] = {'address': item['address'], 'mcap': item['usd_market_cap']}
 
     reply = fetch_replies(item['address'])
     cto_info = ""
     if reply:
-        embed_title += " (Controlled by CTO?)"
-        cto_telegram = ""
-        if "OFFICIAL CTO IS" in reply['text']:
-            parts = reply['text'].split("OFFICIAL CTO IS")
-            if len(parts) > 1:
-                cto_telegram = parts[1].split()[0]
-        elif "CTO IS HERE" in reply['text']:
-            parts = reply['text'].split("CTO IS HERE")
-            if len(parts) > 1:
-                cto_telegram = parts[1].split()[0]
-        elif "CTO: " in reply['text']:
-            parts = reply['text'].split("CTO: ")
-            if len(parts) > 1:
-                cto_telegram = parts[1].split()[0]
-        pumpfun_profile = f"https://pump.fun/profile/{reply['user']}"
-        time_since_message = get_time_since_message(reply['timestamp'])
-        cto_info = (
-            f"**CTO Telegram (Verify First):** {cto_telegram}\n"
-            f"**CTO Lead:** [Profile]({pumpfun_profile})\n"
-            f"**Sent last:** {time_since_message}\n"
-        )
-
-    # Fetch token data to check bonding curve and market cap
-    token_data = fetch_data(TOKEN_SEARCH_URL + item['address'])
-    if token_data and 'data' in token_data and 'usd_market_cap' in token_data['data']:
-        usd_market_cap = token_data['data']['usd_market_cap']
-        bonding_curve = token_data['data']['bonding_curve_progress']
-
-        # Update leaderboard if market cap exceeds 100k
-        if usd_market_cap >= 100000:
-            c.execute('''UPDATE coins SET above_100k_at = ? WHERE address = ?''', (datetime.utcnow(), item['address']))
-            conn.commit()
-
-        if bonding_curve >= 98.92:
-            embed_title += " 🚀 Bonding Curve 98.92%"
+        embed_title += " (CTO?)"
+        user_data = fetch_user_data(reply['user'])
+        if user_data and user_data['likes_received'] > 100 and user_data['mentions_received'] > 10 and user_data['followers'] > 10:
+            cto_info = (
+                f"**CTO Username (Verify First):** {user_data['username']}\n"
+                f"[Profile](https://pump.fun/profile/{reply['user']})\n"
+                f"**Sent:** {get_time_since_message(reply['timestamp'])}\n"
+            )
 
     embed = interactions.Embed(
         title=embed_title,
@@ -173,11 +168,14 @@ def format_embed(item, title, updated=False):
 
     twitter_link = f"[X](https://x.com/{twitter})" if twitter else ""
     website_link = f"[Web]({website})" if website else ""
-    telegram_link = f"[TG](https://{telegram})" if telegram else ""
+    telegram_link = f"[TG]({telegram})" if telegram else ""
 
     social_links = " | ".join(filter(None, [telegram_link, twitter_link, website_link]))
     if social_links:
         social_links = f"SOCIALS = {social_links}"
+
+    first_called_mcap = seen_coins[coin_key].get('first_called_mcap', item['usd_market_cap'])
+    seen_coins[coin_key]['first_called_mcap'] = first_called_mcap
 
     field_value = (
         f"{social_links}\n"
@@ -191,6 +189,8 @@ def format_embed(item, title, updated=False):
         f"```{item['address']}```\n"
         f"[PHOTON: {item['address']}]({photon_link})\n"
         f"[BULLX: {item['address']}]({bullx_link})\n"
+        f"---\n"
+        f"**First Called at MCAP:** ${first_called_mcap:,}\n"
     )
 
     if reply:
@@ -223,54 +223,50 @@ def format_embed(item, title, updated=False):
 
     return embed
 
-async def send_or_update_embed(channel, item, title, sent_messages):
-    updated = item['address'] in sent_messages
-    embed = format_embed(item, title, updated)
+async def send_or_update_embed(channel, item, title, task_type):
+    sent_messages_task = sent_messages[task_type]
+    updated = item['address'] in sent_messages_task
+    embed = format_embed(item, title, task_type, updated)
     if not embed:
         return
     
     try:
         if updated:
-            message_id = sent_messages[item['address']]
+            message_id = sent_messages_task[item['address']]
             try:
                 message = await channel.fetch_message(message_id)
                 if message is not None:
                     await message.edit(embeds=[embed])
                 else:
-                    del sent_messages[item['address']]
+                    del sent_messages_task[item['address']]
                     message = await channel.send(embeds=[embed])
-                    sent_messages[item['address']] = message.id
+                    sent_messages_task[item['address']] = message.id
             except interactions.errors.NotFound:
-                del sent_messages[item['address']]
+                del sent_messages_task[item['address']]
                 message = await channel.send(embeds=[embed])
-                sent_messages[item['address']] = message.id
+                sent_messages_task[item['address']] = message.id
         else:
             message = await channel.send(embeds=[embed])
-            sent_messages[item['address']] = message.id
-
-            # Insert into database
-            called_at = datetime.utcnow()
-            c.execute('''INSERT OR IGNORE INTO coins (address, name, symbol, called_mcap, called_at) VALUES (?, ?, ?, ?, ?)''',
-                      (item['address'], item['name'], item['symbol'], item['usd_market_cap'], called_at))
-            conn.commit()
+            sent_messages_task[item['address']] = message.id
     except Exception as e:
         logging.error(f"Error in send_or_update_embed: {e}")
 
-async def delete_old_messages(channel, valid_addresses, sent_messages):
-    for address, message_id in list(sent_messages.items()):
+async def delete_old_messages(channel, valid_addresses, task_type):
+    sent_messages_task = sent_messages[task_type]
+    for address, message_id in list(sent_messages_task.items()):
         if address not in valid_addresses:
             try:
                 message = await channel.fetch_message(message_id)
                 if message:
                     await message.delete()
-                del sent_messages[address]
+                del sent_messages_task[address]
             except interactions.errors.NotFound:
-                del sent_messages[address]
+                del sent_messages_task[address]
 
-async def send_soaring_coins(channel):
-    global last_soaring_data
-    try:
-        params = {
+async def send_coins(channel, task_type):
+    global last_data
+    params = {
+        "soaring": {
             'limit': '50',
             'orderby': 'progress',
             'direction': 'desc',
@@ -279,69 +275,42 @@ async def send_soaring_coins(channel):
             'max_marketcap': '30000',
             'filters[]': 'has_socials',
             'min_holder_count': '50',
-        }
-        url = build_query_url(BASE_URL, params)
-        data = fetch_data(url)
-        if data and data['data']['rank'] != last_soaring_data:
-            last_soaring_data = data['data']['rank']
-            valid_addresses = {item['address'] for item in data['data']['rank']}
-            for item in data['data']['rank']:
-                await send_or_update_embed(channel, item, "🚀 Soaring Coin", sent_soaring_messages)
-                seen_coins[(item['name'], item['symbol'])] = item['address']
-            await delete_old_messages(channel, valid_addresses, sent_soaring_messages)
-    except Exception as e:
-        logging.error(f"Error in send_soaring_coins: {e}")
-
-async def send_completing_coins(channel):
-    global last_completing_data
-    try:
-        params = {
+        },
+        "new": {
+            'limit': '50',
+            'orderby': 'usd_market_cap',
+            'direction': 'desc',
+            'new_creation': 'true',
+            'filters[]': 'has_socials',
+            'min_marketcap': '4000',
+            'max_marketcap': '15000',
+            'min_volume': '1000',
+            'min_holder_count': '18',
+        },
+        "completing": {
             'limit': '50',
             'orderby': 'usd_market_cap',
             'direction': 'desc',
             'pump': 'true',
             'min_marketcap': '30000',
             'max_marketcap': '59000',
-            'min_holder_count': '100',
+            'min_holder_count': '80',
             'filters[]': 'has_socials',
             'min_volume': '2000',
         }
-        url = build_query_url(BASE_URL, params)
-        data = fetch_data(url)
-        if data and data['data']['rank'] != last_completing_data:
-            last_completing_data = data['data']['rank']
-            valid_addresses = {item['address'] for item in data['data']['rank']}
-            for item in data['data']['rank']:
-                await send_or_update_embed(channel, item, "🚀 BOUT TO RAY!", sent_completing_messages)
-                seen_coins[(item['name'], item['symbol'])] = item['address']
-            await delete_old_messages(channel, valid_addresses, sent_completing_messages)
-    except Exception as e:
-        logging.error(f"Error in send_completing_coins: {e}")
-
-async def send_new_created_coins(channel):
-    global last_new_data
+    }
     try:
-        params = {
-            'limit': '50',
-            'orderby': 'usd_market_cap',
-            'direction': 'desc',
-            'new_creation': 'true',
-            'filters[]': 'has_socials',
-            'min_marketcap': '7000',
-            'max_marketcap': '25000',
-            'min_holder_count': '20',
-        }
-        url = build_query_url(BASE_URL, params)
+        url = build_query_url(BASE_URL, params[task_type])
         data = fetch_data(url)
-        if data and data['data']['rank'] != last_new_data:
-            last_new_data = data['data']['rank']
+        if data and data['data']['rank'] != last_data[task_type]:
+            last_data[task_type] = data['data']['rank']
             valid_addresses = {item['address'] for item in data['data']['rank']}
             for item in data['data']['rank']:
-                await send_or_update_embed(channel, item, "🌟 Newly Created Coin", sent_new_messages)
+                await send_or_update_embed(channel, item, f"🚀 {task_type.capitalize()} Coin", task_type)
                 seen_coins[(item['name'], item['symbol'])] = item['address']
-            await delete_old_messages(channel, valid_addresses, sent_new_messages)
+            await delete_old_messages(channel, valid_addresses, task_type)
     except Exception as e:
-        logging.error(f"Error in send_new_created_coins: {e}")
+        logging.error(f"Error in send_coins: {e}")
 
 def build_query_url(base_url, params):
     query_url = f"{base_url}?"
@@ -359,6 +328,16 @@ async def admin_command(ctx):
     member = await guild.fetch_member(ctx.author.id)
     return ctx.author.username == owner_username or any(role.permissions & interactions.Permissions.MANAGE_GUILD for role in member.roles)
 
+async def start_task(ctx, task_type):
+    if not await admin_command(ctx):
+        await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+        return
+    await ctx.send(f'Grabbing {task_type.capitalize()} Coins for the BAGSS! 👜', ephemeral=True)
+    scheduler = await aiojobs.create_scheduler()
+    task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type))
+    running_tasks[task_type][ctx.channel.id] = task
+    await ctx.send(f'Started sending {task_type} coin information. 📈', ephemeral=True)
+
 @interactions.slash_command(
     name="soaring",
     description="Start sending soaring coin information.",
@@ -366,17 +345,7 @@ async def admin_command(ctx):
     dm_permission=False
 )
 async def soaring(ctx):
-    try:
-        if not await admin_command(ctx):
-            await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-            return
-        await ctx.send('Grabbing Soaring Coins for the BAGSS! 👜', ephemeral=True)
-        scheduler = await aiojobs.create_scheduler()
-        task = await scheduler.spawn(loop_send_soaring_coins(ctx.channel))
-        running_tasks["soaring"][ctx.channel.id] = task
-        await ctx.send('Started sending soaring coin information. 📈', ephemeral=True)
-    except Exception as e:
-        logging.error(f"Error in soaring command: {e}")
+    await start_task(ctx, "soaring")
 
 @interactions.slash_command(
     name="completing",
@@ -384,19 +353,8 @@ async def soaring(ctx):
     default_member_permissions=interactions.Permissions.MANAGE_GUILD,
     dm_permission=False
 )
-
 async def completing(ctx):
-    try:
-        if not await admin_command(ctx):
-            await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-            return
-        await ctx.send('Grabbing Completing Coins for the BAGSS! 👜', ephemeral=True)
-        scheduler = await aiojobs.create_scheduler()
-        task = await scheduler.spawn(loop_send_completing_coins(ctx.channel))
-        running_tasks["completing"][ctx.channel.id] = task
-        await ctx.send('Started sending completing coin information. 📈', ephemeral=True)
-    except Exception as e:
-        logging.error(f"Error in completing command: {e}")
+    await start_task(ctx, "completing")
 
 @interactions.slash_command(
     name="new",
@@ -405,17 +363,7 @@ async def completing(ctx):
     dm_permission=False
 )
 async def new(ctx):
-    try:
-        if not await admin_command(ctx):
-            await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-            return
-        await ctx.send('Grabbing Newly Created Coins for the BAGSS! 👜', ephemeral=True)
-        scheduler = await aiojobs.create_scheduler()
-        task = await scheduler.spawn(loop_send_new_created_coins(ctx.channel))
-        running_tasks["new"][ctx.channel.id] = task
-        await ctx.send('Started sending newly created coin information. 📈', ephemeral=True)
-    except Exception as e:
-        logging.error(f"Error in new command: {e}")
+    await start_task(ctx, "new")
 
 @interactions.slash_command(
     name="stop",
@@ -457,36 +405,41 @@ async def reboot(ctx):
                 await running_tasks[task_type][ctx.channel.id].close()
                 del running_tasks[task_type][ctx.channel.id]
         scheduler = await aiojobs.create_scheduler()
-        task = await scheduler.spawn(loop_send_soaring_coins(ctx.channel))
-        running_tasks["soaring"][ctx.channel.id] = task
-        task = await scheduler.spawn(loop_send_completing_coins(ctx.channel))
-        running_tasks["completing"][ctx.channel.id] = task
+        for task_type in ["soaring", "completing"]:
+            task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type))
+            running_tasks[task_type][ctx.channel.id] = task
         await ctx.send('Rebooted the coin information sending loops. 🔄', ephemeral=True)
     except Exception as e:
         logging.error(f"Error in reboot command: {e}")
 
-async def loop_send_soaring_coins(channel):
-    while True:
-        try:
-            await send_soaring_coins(channel)
-        except Exception as e:
-            logging.error(f"Error in loop_send_soaring_coins: {e}")
-        await asyncio.sleep(4)  # Wait for 4 seconds before sending the next update
+@interactions.slash_command(
+    name="leaderboard",
+    description="Show the leaderboard of coins with highest market caps."
+)
+async def leaderboard(ctx):
+    try:
+        c.execute("SELECT name, symbol, called_mcap, called_at FROM coins WHERE called_mcap > 100000 ORDER BY called_mcap DESC LIMIT 10")
+        rows = c.fetchall()
+        embed = interactions.Embed(
+            title="Leaderboard of Coins with Highest Market Caps",
+            color=0xFFD700
+        )
+        for row in rows:
+            embed.add_field(
+                name=f"{row[0]} ({row[1]})",
+                value=f"${row[2]:,} (Called at {row[3]})",
+                inline=False
+            )
+        await ctx.send(embeds=[embed], ephemeral=True)
+    except Exception as e:
+        logging.error(f"Error in leaderboard command: {e}")
 
-async def loop_send_completing_coins(channel):
+async def loop_send_coins(channel, task_type):
     while True:
         try:
-            await send_completing_coins(channel)
+            await send_coins(channel, task_type)
         except Exception as e:
-            logging.error(f"Error in loop_send_completing_coins: {e}")
-        await asyncio.sleep(4)  # Wait for 4 seconds before sending the next update
-
-async def loop_send_new_created_coins(channel):
-    while True:
-        try:
-            await send_new_created_coins(channel)
-        except Exception as e:
-            logging.error(f"Error in loop_send_new_created_coins: {e}")
+            logging.error(f"Error in loop_send_coins for {task_type}: {e}")
         await asyncio.sleep(4)  # Wait for 4 seconds before sending the next update
 
 async def monitor_tasks():
@@ -497,12 +450,7 @@ async def monitor_tasks():
                     logging.warning(f"Task for channel {channel_id} has stopped. Restarting {task_type} task...")
                     channel = await bot.fetch_channel(channel_id)
                     scheduler = await aiojobs.create_scheduler()
-                    if task_type == "soaring":
-                        new_task = await scheduler.spawn(loop_send_soaring_coins(channel))
-                    elif task_type == "new":
-                        new_task = await scheduler.spawn(loop_send_new_created_coins(channel))
-                    elif task_type == "completing":
-                        new_task = await scheduler.spawn(loop_send_completing_coins(channel))
+                    new_task = await scheduler.spawn(loop_send_coins(channel, task_type))
                     running_tasks[task_type][channel_id] = new_task
         await asyncio.sleep(60)  # Check every minute
 
