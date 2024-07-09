@@ -13,6 +13,7 @@ dotenv.load_dotenv()
 bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
 
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
+SEARCH_API_BASE_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/sol/search?q='
 REPLY_API_BASE_URL = 'https://frontend-api.pump.fun/replies/'
 USER_API_BASE_URL = 'https://frontend-api.pump.fun/users/'
 
@@ -110,11 +111,12 @@ def get_time_since_message(timestamp):
 
 def calculate_percentage_change(original, current):
     if original == 0:
-        return "N/A"
+        return "N/A", ""
     change = ((current - original) / original) * 100
-    return f"{change:.2f}%"
+    trend_indicator = "🟢" if change > 0 else "🔴" if change < 0 else ""
+    return f"{change:.2f}%", trend_indicator
 
-def format_embed(item, title, task_type, updated=False, trend="", percentage_change=""):
+def format_embed(item, title, task_type, updated=False, trend="", percentage_change="", trend_indicator=""):
     if not item['address'].endswith('pump'):
         return None
 
@@ -154,7 +156,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     dex_ad = item.get('dexscr_ad', 0) == 1
     dex_paid = item.get('dexscr_update_link', 0) == 1
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
-    created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
+    created_time_since = get_time_since_creation(item['created_timestamp']) if item.get(['created_timestamp']) else 'N/A'
     holder_count = item.get('holder_count', 'N/A')
     volume_5m = f"{float(item.get('volume_5m', 0.0) or 0.0):.2f}"
     market_cap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 'N/A'
@@ -182,7 +184,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'} | 🛠️ **Dev Sold?:** {dev_sold}\n"
         f"📈 **Bonding Curve Progress:** `{progress:.2f}%`  📊 **5-Min Volume:** `${volume_5m}`\n"
         f"---\n"
-        f"👁️ First seen at `${seen_coins[coin_key]['called_mcap']}`|`({percentage_change})` )\n"
+        f"👁️ First seen at `${seen_coins[coin_key]['called_mcap']}` | `{percentage_change} {trend_indicator}`\n"
         f"---\n"
         f"```{item['address']}```\n"
         f"[PHOTON: {item['address']}]({photon_link})\n"
@@ -224,17 +226,18 @@ async def send_or_update_embed(channel, item, title, task_type):
     updated = item['address'] in sent_messages_task
     trend = ""
     percentage_change = ""
+    trend_indicator = ""
     if updated:
         previous_mcap = seen_coins[(item['name'], item['symbol'])]['called_mcap']
         current_mcap = int(item['usd_market_cap'])
-        percentage_change = calculate_percentage_change(seen_coins[(item['name'], item['symbol'])]['called_mcap'], current_mcap)
+        percentage_change, trend_indicator = calculate_percentage_change(seen_coins[(item['name'], item['symbol'])]['called_mcap'], current_mcap)
         if current_mcap > previous_mcap:
             trend = "Uptrend 📈"
         elif current_mcap < previous_mcap:
             trend = "Downtrend 📉"
         seen_coins[(item['name'], item['symbol'])]['market_cap'] = current_mcap
 
-    embed = format_embed(item, title, task_type, updated, trend, percentage_change)
+    embed = format_embed(item, title, task_type, updated, trend, percentage_change, trend_indicator)
     if not embed:
         return
     
@@ -337,6 +340,13 @@ def build_query_url(base_url, params):
         query_url += f"{key}={value}&"
     return query_url.strip('&')
 
+def fetch_current_market_cap(address):
+    url = f"{SEARCH_API_BASE_URL}{address}"
+    data = fetch_data(url)
+    if data and 'data' in data and len(data['data']) > 0:
+        return int(data['data'][0]['usd_market_cap'])
+    return None
+
 @bot.event
 async def on_ready():
     logging.info(f'Bot logged in as {bot.me.name}')
@@ -437,16 +447,25 @@ async def reboot(ctx):
 )
 async def leaderboard(ctx):
     try:
-        c.execute("SELECT name, symbol, called_mcap, called_at FROM coins WHERE called_mcap > 100000 ORDER BY called_mcap DESC LIMIT 10")
+        c.execute("SELECT address, name, symbol, called_mcap, called_at FROM coins WHERE called_mcap >= 55000")
         rows = c.fetchall()
+        
+        leaderboard_data = []
+        for row in rows:
+            current_mcap = fetch_current_market_cap(row[0])
+            if current_mcap and current_mcap >= 55000:
+                leaderboard_data.append((row[1], row[2], current_mcap, row[3], row[4]))
+        
+        leaderboard_data.sort(key=lambda x: x[2], reverse=True)  # Sort by current market cap
+        
         embed = interactions.Embed(
             title="Leaderboard of Coins with Highest Market Caps",
             color=0xFFD700
         )
-        for row in rows:
+        for rank, data in enumerate(leaderboard_data[:10], start=1):  # Limit to top 10
             embed.add_field(
-                name=f"{row[0]} ({row[1]})",
-                value=f"${row[2]:,} (Called at {row[3]})",
+                name=f"{rank}. {data[0]} ({data[1]})",
+                value=f"Current MCAP: ${data[2]:,}\nCalled at ${data[3]:,} on {data[4]}",
                 inline=False
             )
         await ctx.send(embeds=[embed], ephemeral=True)
