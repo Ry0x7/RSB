@@ -156,7 +156,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     dex_ad = item.get('dexscr_ad', 0) == 1
     dex_paid = item.get('dexscr_update_link', 0) == 1
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
-    created_time_since = get_time_since_creation(item['created_timestamp']) if item.get(['created_timestamp']) else 'N/A'
+    created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
     holder_count = item.get('holder_count', 'N/A')
     volume_5m = f"{float(item.get('volume_5m', 0.0) or 0.0):.2f}"
     market_cap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 'N/A'
