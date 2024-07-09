@@ -296,7 +296,7 @@ async def send_coins(channel, task_type):
             'new_creation': 'true',
             'filters[]': 'has_socials',
             'min_marketcap': '3800',
-            'max_marketcap': '15000',
+            'max_marketcap': '10000',
             'min_holder_count': '18',
         },
         "completing": {
@@ -437,7 +437,7 @@ async def reboot(ctx):
                 await running_tasks[task_type][ctx.channel.id].close()
                 del running_tasks[task_type][ctx.channel.id]
         scheduler = await aiojobs.create_scheduler()
-        for task_type in ["soaring", "completing"]:
+        for task_type in ["soaring", "new", "completing"]:
             task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type))
             running_tasks[task_type][ctx.channel.id] = task
         await ctx.send('Rebooted the coin information sending loops. 🔄', ephemeral=True)
@@ -476,9 +476,13 @@ async def leaderboard(ctx):
         logging.error(f"Error in leaderboard command: {e}")
 
 async def loop_send_coins(channel, task_type):
+    task_types = ["soaring", "new", "completing"]
+    task_index = task_types.index(task_type)
     while True:
         try:
             await send_coins(channel, task_type)
+            task_index = (task_index + 1) % len(task_types)
+            task_type = task_types[task_index]
         except Exception as e:
             logging.error(f"Error in loop_send_coins for {task_type}: {e}")
         await asyncio.sleep(4)
