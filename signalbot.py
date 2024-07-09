@@ -7,6 +7,7 @@ import asyncio
 import dotenv
 import os
 import sqlite3
+import time
 
 dotenv.load_dotenv()
 
@@ -76,6 +77,7 @@ def fetch_replies(token_address):
                 if reply['timestamp'] > latest_timestamp:
                     latest_reply = reply
                     latest_timestamp = reply['timestamp']
+        time.sleep(10)  # Add a delay of 1 second
         return latest_reply
     return None
 
@@ -83,6 +85,7 @@ def fetch_user_data(user_id):
     url = f"{USER_API_BASE_URL}{user_id}"
     response = fetch_data(url)
     if response:
+        time.sleep(10)  # Add a delay of 1 second
         return response
     return None
 
