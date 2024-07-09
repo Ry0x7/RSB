@@ -179,7 +179,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
 
     field_value = (
         f"{social_links}\n"
-        f"👤 **[PumpFun]({pumpfun_link})**\n"
+        f"💊 **[PumpFun]({pumpfun_link})**\n"
         f"---\n"
         f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}`\n"
         f"👥 **Holders:** `{holder_count}` 💬 **Replies** `{reply_count}` 🏆 **Top 10** `{top_10_holder_rate:.2f}%`\n"
