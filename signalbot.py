@@ -10,7 +10,6 @@ import sqlite3
 
 dotenv.load_dotenv()
 
-# Correct token and default_scope initialization
 bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
 
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
@@ -26,7 +25,6 @@ owner_username = "chakazzz"
 
 logging.basicConfig(level=logging.INFO)
 
-# Initialize database
 conn = sqlite3.connect('coins.db')
 c = conn.cursor()
 c.execute('''
@@ -40,7 +38,6 @@ c.execute('''
 ''')
 conn.commit()
 
-# Dictionary to keep track of running tasks and sent messages
 running_tasks = {
     "soaring": {},
     "new": {},
@@ -98,7 +95,7 @@ def get_time_since_creation(created_timestamp):
         return f"{time_diff.days} days ago"
 
 def get_time_since_message(timestamp):
-    message_time = datetime.utcfromtimestamp(timestamp / 1000)  # Convert from milliseconds to seconds
+    message_time = datetime.utcfromtimestamp(timestamp / 1000)
     now = datetime.utcnow()
     time_diff = now - message_time
     
@@ -120,35 +117,13 @@ def format_embed(item, title, task_type, updated=False):
         return None
 
     embed_title = title
+    if updated:
+        embed_title = f"Updated {title}"
+
     coin_key = (item['name'], item['symbol'])
     is_duplicate = coin_key in seen_coins and seen_coins[coin_key] != item['address']
     if is_duplicate:
         embed_title += " (Duplicated Coin)"
-
-    # Fetch the initial called market cap and update it in the database if necessary
-    c.execute("SELECT called_mcap FROM coins WHERE address = ?", (item['address'],))
-    result = c.fetchone()
-    if result is None:
-        called_mcap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 0
-        called_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-        c.execute("INSERT INTO coins (address, name, symbol, called_mcap, called_at) VALUES (?, ?, ?, ?, ?)",
-                  (item['address'], item['name'], item['symbol'], called_mcap, called_at))
-        conn.commit()
-    else:
-        called_mcap = result[0]
-    
-    current_mcap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 0
-    mcap_change = ""
-    if updated:
-        if current_mcap > called_mcap:
-            mcap_change = "📈 Uptrend"
-        elif current_mcap < called_mcap:
-            mcap_change = "📉 Downtrend"
-
-    if current_mcap >= 50000:
-        embed_title += " 💸"
-    if current_mcap >= 100000:
-        embed_title += " 👑"
 
     reply = fetch_replies(item['address'])
     cto_info = ""
@@ -157,7 +132,7 @@ def format_embed(item, title, task_type, updated=False):
         user_data = fetch_user_data(reply['user'])
         if user_data and user_data['likes_received'] > 100 and user_data['mentions_received'] > 10 and user_data['followers'] > 10:
             cto_info = (
-                f"**CTO Username (Verify First):** {user_data['username']}\n"
+                f"**CTO Username (⚠️Verify!⚠️):** {user_data['username']}\n"
                 f"[Profile](https://pump.fun/profile/{reply['user']})\n"
                 f"**Sent:** {get_time_since_message(reply['timestamp'])}\n"
             )
@@ -185,12 +160,16 @@ def format_embed(item, title, task_type, updated=False):
     telegram = item.get('telegram', '')
 
     twitter_link = f"[X](https://x.com/{twitter})" if twitter else ""
-    website_link = f"[Web]({website})" if website else ""
-    telegram_link = f"[TG]({telegram})" if telegram else ""
+    website_link = f"[Web]({website if website.startswith('http') else 'https://' + website})" if website else ""
+    telegram_link = f"[TG]({telegram if telegram.startswith('http') else 'https://' + telegram})" if telegram else ""
+
 
     social_links = " | ".join(filter(None, [telegram_link, twitter_link, website_link]))
     if social_links:
         social_links = f"SOCIALS = {social_links}"
+
+    uptrend = "Uptrend 📈" if updated and item['usd_market_cap'] > seen_coins[coin_key]['market_cap'] else ""
+    downtrend = "Downtrend 📉" if updated and item['usd_market_cap'] < seen_coins[coin_key]['market_cap'] else ""
 
     field_value = (
         f"{social_links}\n"
@@ -200,10 +179,12 @@ def format_embed(item, title, task_type, updated=False):
         f"👥 **Holders:** `{holder_count}` 💬 **Replies** `{reply_count}` 🏆 **Top 10** `{top_10_holder_rate:.2f}%`\n"
         f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'} | 🛠️ **Dev Sold?:** {dev_sold}\n"
         f"📈 **Bonding Curve Progress:** `{progress:.2f}%`  📊 **5-Min Volume:** `${volume_5m}`\n"
+        f"{uptrend} {downtrend}\n"
         f"---\n"
         f"```{item['address']}```\n"
         f"[PHOTON: {item['address']}]({photon_link})\n"
         f"[BULLX: {item['address']}]({bullx_link})\n"
+        f"Last Seen At `${seen_coins[coin_key]['called_mcap']}`\n"
     )
 
     if reply:
@@ -217,7 +198,7 @@ def format_embed(item, title, task_type, updated=False):
         field_value = field_value[:1021] + "..."
         
     embed.add_field(
-        name=f"{item['name']} ({item['symbol']}) First called at ${called_mcap:,}",
+        name=f"{item['name']} ({item['symbol']})",
         value=field_value,
         inline=False
     )
@@ -249,15 +230,6 @@ async def send_or_update_embed(channel, item, title, task_type):
             try:
                 message = await channel.fetch_message(message_id)
                 if message is not None:
-                    current_mcap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 0
-                    c.execute("SELECT called_mcap FROM coins WHERE address = ?", (item['address'],))
-                    result = c.fetchone()
-                    if result:
-                        called_mcap = result[0]
-                        if current_mcap > called_mcap:
-                            embed.title += " 📈"
-                        elif current_mcap < called_mcap:
-                            embed.title += " 📉"
                     await message.edit(embeds=[embed])
                 else:
                     del sent_messages_task[item['address']]
@@ -328,8 +300,18 @@ async def send_coins(channel, task_type):
             last_data[task_type] = data['data']['rank']
             valid_addresses = {item['address'] for item in data['data']['rank']}
             for item in data['data']['rank']:
+                if (item['name'], item['symbol']) not in seen_coins:
+                    seen_coins[(item['name'], item['symbol'])] = {
+                        'address': item['address'],
+                        'called_mcap': int(item['usd_market_cap']),
+                        'market_cap': int(item['usd_market_cap'])
+                    }
+                    c.execute('INSERT OR REPLACE INTO coins (address, name, symbol, called_mcap, called_at) VALUES (?, ?, ?, ?, ?)', 
+                              (item['address'], item['name'], item['symbol'], int(item['usd_market_cap']), datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')))
+                    conn.commit()
+                else:
+                    seen_coins[(item['name'], item['symbol'])]['market_cap'] = int(item['usd_market_cap'])
                 await send_or_update_embed(channel, item, f"🚀 {task_type.capitalize()} Coin", task_type)
-                seen_coins[(item['name'], item['symbol'])] = item['address']
             await delete_old_messages(channel, valid_addresses, task_type)
     except Exception as e:
         logging.error(f"Error in send_coins: {e}")
@@ -343,12 +325,12 @@ def build_query_url(base_url, params):
 @bot.event
 async def on_ready():
     logging.info(f'Bot logged in as {bot.me.name}')
-    asyncio.create_task(monitor_tasks())  # Start the monitoring task
+    asyncio.create_task(monitor_tasks())
 
 async def admin_command(ctx):
     guild = await bot.fetch_guild(ctx.guild_id)
     member = await guild.fetch_member(ctx.author.id)
-    return ctx.author.username == owner_username or member.permissions.has(interactions.Permissions.MANAGE_GUILD)
+    return ctx.author.username == owner_username or any(role.permissions & interactions.Permissions.MANAGE_GUILD for role in member.roles)
 
 async def start_task(ctx, task_type):
     if not await admin_command(ctx):
@@ -442,12 +424,16 @@ async def leaderboard(ctx):
     try:
         c.execute("SELECT name, symbol, called_mcap, called_at FROM coins WHERE called_mcap > 100000 ORDER BY called_mcap DESC LIMIT 10")
         rows = c.fetchall()
-        leaderboard_text = "\n".join([f"{row[0]} ({row[1]}) - ${row[2]:,} (Called at {row[3]})" for row in rows])
         embed = interactions.Embed(
-            title="🏆 Leaderboard of Coins with Highest Market Caps",
-            description=leaderboard_text,
+            title="Leaderboard of Coins with Highest Market Caps",
             color=0xFFD700
         )
+        for row in rows:
+            embed.add_field(
+                name=f"{row[0]} ({row[1]})",
+                value=f"${row[2]:,} (Called at {row[3]})",
+                inline=False
+            )
         await ctx.send(embeds=[embed], ephemeral=True)
     except Exception as e:
         logging.error(f"Error in leaderboard command: {e}")
@@ -458,7 +444,7 @@ async def loop_send_coins(channel, task_type):
             await send_coins(channel, task_type)
         except Exception as e:
             logging.error(f"Error in loop_send_coins for {task_type}: {e}")
-        await asyncio.sleep(4)  # Wait for 4 seconds before sending the next update
+        await asyncio.sleep(4)
 
 async def monitor_tasks():
     while True:
@@ -470,6 +456,6 @@ async def monitor_tasks():
                     scheduler = await aiojobs.create_scheduler()
                     new_task = await scheduler.spawn(loop_send_coins(channel, task_type))
                     running_tasks[task_type][channel_id] = new_task
-        await asyncio.sleep(60)  # Check every minute
+        await asyncio.sleep(60)
 
 bot.start()
