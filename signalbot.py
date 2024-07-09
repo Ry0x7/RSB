@@ -7,7 +7,6 @@ import asyncio
 import dotenv
 import os
 import sqlite3
-import time
 
 dotenv.load_dotenv()
 
@@ -15,8 +14,6 @@ bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
 
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
 SEARCH_API_BASE_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/sol/search?q='
-REPLY_API_BASE_URL = 'https://frontend-api.pump.fun/replies/'
-USER_API_BASE_URL = 'https://frontend-api.pump.fun/users/'
 
 last_data = {
     "soaring": None,
@@ -64,29 +61,6 @@ def fetch_data(url):
             logging.error(f"Error fetching data from {url}: {response.status_code} {response.text}")
     except requests.exceptions.RequestException as e:
         logging.error(f"Request exception occurred: {e}")
-    return None
-
-def fetch_replies(token_address):
-    url = f"{REPLY_API_BASE_URL}{token_address}"
-    response = fetch_data(url)
-    if response and isinstance(response, list):
-        latest_reply = None
-        latest_timestamp = 0
-        for reply in response:
-            if any(keyword in reply['text'] for keyword in ["OFFICIAL CTO IS", "DEX ADS GETTING PAID BY CTO", "CTO IS HERE", "CTO"]):
-                if reply['timestamp'] > latest_timestamp:
-                    latest_reply = reply
-                    latest_timestamp = reply['timestamp']
-        time.sleep(10)  # Add a delay of 1 second
-        return latest_reply
-    return None
-
-def fetch_user_data(user_id):
-    url = f"{USER_API_BASE_URL}{user_id}"
-    response = fetch_data(url)
-    if response:
-        time.sleep(10)  # Add a delay of 1 second
-        return response
     return None
 
 def get_time_since_creation(created_timestamp):
@@ -138,18 +112,6 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
 
     coin_key = (item['name'], item['symbol'])
 
-    reply = fetch_replies(item['address'])
-    cto_info = ""
-    if reply:
-        embed_title += " (CTO?)"
-        user_data = fetch_user_data(reply['user'])
-        if user_data and user_data['likes_received'] > 100 and user_data['mentions_received'] > 10 and user_data['followers'] > 10:
-            cto_info = (
-                f"**CTO Username (Verify First):** {user_data['username']}\n"
-                f"[Profile](https://pump.fun/profile/{reply['user']})\n"
-                f"**Sent:** {get_time_since_message(reply['timestamp'])}\n"
-            )
-
     embed = interactions.Embed(
         title=embed_title,
         color=0x00ff00
@@ -195,12 +157,6 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         f"[PHOTON: {item['address']}]({photon_link})\n"
         f"[BULLX: {item['address']}]({bullx_link})\n"
     )
-
-    if reply:
-        field_value += (
-            f"---\n"
-            f"{cto_info}"
-        )
 
     if len(field_value) > 1024:
         logging.warning(f"Field value for {item['address']} exceeded 1024 characters. Truncating.")
@@ -335,7 +291,6 @@ async def send_coins(channel, task_type):
                 else:
                     seen_coins[coin_key]['market_cap'] = int(item['usd_market_cap'])
                 await send_or_update_embed(channel, item, f"🚀 {task_type.capitalize()} Coin", task_type)
-                await asyncio.sleep(10)  # Delay added here for each check if a coin has a CTO or not
             await delete_old_messages(channel, valid_addresses, task_type)
     except Exception as e:
         logging.error(f"Error in send_coins: {e}")
