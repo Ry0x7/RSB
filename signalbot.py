@@ -144,7 +144,10 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
     holder_count = item.get('holder_count', 'N/A')
-    volume_1m = f"{float(item.get('volume_1m', 0.0) or 0.0):.2f}"
+    volume_1m = float(item.get('volume_1m', 0.0) or 0.0)
+    if volume_1m < 100:
+        logging.info(f"Token {item['address']} has a 1-minute volume below 100. Skipping.")
+        return None  # Skip this token
     market_cap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 'N/A'
     progress = float(item.get('progress', 0.0) or 0.0) * 100
     reply_count = item.get('reply_count', 'N/A')
@@ -268,7 +271,7 @@ async def send_coins(channel, task_type):
             'orderby': 'progress',
             'direction': 'desc',
             'soaring': 'true',
-            'min_volume': '5000',
+            'min_volume': '10000',
             'min_marketcap': '9000',
             'max_marketcap': '30000',
             'filters[]': 'has_socials',
