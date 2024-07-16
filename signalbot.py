@@ -108,7 +108,10 @@ def fetch_wallet_counts(address):
         logging.error(f"No valid data returned for wallet counts of address {address}")
     return None
 
-def format_embed(item, title, updated=False, trend="", percentage_change="", trend_indicator=""):
+def format_embed(item, title, task_type, updated=False, trend="", percentage_change="", trend_indicator=""):
+    if not item['address'].endswith('pump'):
+        return None
+    
     top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
     if top_10_holder_rate >= 40:
         return None
