@@ -136,7 +136,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     embed.set_thumbnail(url=logo_url)
 
     photon_link = f"https://photon-sol.tinyastro.io/en/r/@RickBurpBot/{item['address']}"
-    bullx_link = f"https://bullx.io/terminal?chainId=1399811149&address={item['address']}&r=M7B0AY33YBS"
+    bullx_link = f"https://bullx.io/terminal?chainId=1399811149&address={item['address']}"
     pepeboost_link = f"https://t.me/pepeboost_sol04_bot?start={item['address']}"
     trojan_link = f"https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']}"
     pumpfun_link = f"https://pump.fun/{item['address']}"
@@ -144,7 +144,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
     holder_count = item.get('holder_count', 'N/A')
-    volume_5m = f"{float(item.get('volume_1m', 0.0) or 0.0):.2f}"
+    volume_1m = f"{float(item.get('volume_1m', 0.0) or 0.0):.2f}"
     market_cap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 'N/A'
     progress = float(item.get('progress', 0.0) or 0.0) * 100
     reply_count = item.get('reply_count', 'N/A')
@@ -163,28 +163,28 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
 
     wallet_counts = fetch_wallet_counts(item['address'])
     wallet_info = (
-        f"👝 **Wallet Counts:**\n"
+        f"👝 **Wallets:**\n"
         f"🦈 **Whales:** `{wallet_counts['whale_wallets']}` 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
         f"🐀 **Rats:** `{wallet_counts['rat_trader_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
     ) if wallet_counts and wallet_counts['sniper_wallets'] <= 5 else ""
 
     field_value = (
         f"{social_links}\n"
-        f"💊 **[PumpFun]({pumpfun_link})**\n"
+        f"💊 **[Pump]({pumpfun_link})**\n"
         f"---\n"
         f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}`\n"
-        f"👥 **Holders:** `{holder_count}` 💬 **Replies** `{reply_count}` 🏆 **Top 10** `{top_10_holder_rate:.2f}%`\n"
-        f"💸 **Dexpaid:** {'✅' if dex_paid else '❌'} | 🛠️ **Dev Sold?:** {dev_sold}\n"
-        f"📈 **Bonding Curve Progress:** `{progress:.2f}%`  📊 **5-Min Volume:** `${volume_5m}`\n"
+        f"👥 **Holders:** `{holder_count}` 💬 **Rp** `{reply_count}` 🏆 **Top 10** `{top_10_holder_rate:.2f}%`\n"
+        f"💸 **Dexpaid?:** {'✅' if dex_paid else '❌'} | 🛠️ **Dev Sold?:** {dev_sold}\n"
+        f"📈 **Bonding Progress:** `{progress:.2f}%`  📊 **1-Min Vol:** `${volume_1m}`\n"
         f"---\n"
-        f"👁️ First seen at `${seen_coins[coin_key]['called_mcap']}` | `{percentage_change} {trend_indicator}`\n"
+        f"👁️ Seen Mcap: `${seen_coins[coin_key]['called_mcap']}` | `{percentage_change} {trend_indicator}`\n"
         f"---\n"
         f"{wallet_info}\n"
         f"```{item['address']}```\n"
-        f"[Snipe with Pepeboost]({pepeboost_link})\n"
-        f"[Snipe with Trojan]({trojan_link})\n"
-        f"[Snipe with Photon]({photon_link})\n"
-        f"[Snipe with Bullx]({bullx_link})\n"
+        f"[Snipe Pepeboost]({pepeboost_link})\n"
+        f"[Snipe Trojan]({trojan_link})\n"
+        f"[Snipe Photon]({photon_link})\n"
+        f"[Snipe BullX]({bullx_link})\n"
     )
 
     if len(field_value) > 1024:
@@ -197,18 +197,10 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         inline=False
     )
 
-    donation_message = (
-        f"Donate: `7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n"
-    )
 
-    embed.add_field(
-        name="Donations & Business Inquiries",
-        value=donation_message,
-        inline=False
-    )
-    
     embed.set_footer(
         text= f"Disclaimer: This is not financial advice alway DYOR and manage your risk.",
+        text= f"Donate: `7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n"
     )
 
     return embed
