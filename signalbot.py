@@ -144,10 +144,9 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
     holder_count = item.get('holder_count', 'N/A')
-    volume_1m = float(item.get('volume_1m', 0.0) or 0.0)
+    volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))  # Remove decimals and convert to int
     if volume_1m < 100:
-        logging.info(f"Token {item['address']} has a 1-minute volume below 100. Skipping.")
-        return None  # Skip this token
+        return None  # Skip coins with 1-minute volume below 100
     market_cap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 'N/A'
     progress = float(item.get('progress', 0.0) or 0.0) * 100
     reply_count = item.get('reply_count', 'N/A')
