@@ -183,7 +183,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         f"🛠️ **Dev Sold?:** {dev_sold}\n"
         f"📈 **Bonding Progress:** `{progress:.2f}%`\n"
         f"---\n"
-        f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']}|{percentage_change}{trend_indicator}`\n"
+        f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']}`|`{percentage_change}{trend_indicator}`\n"
         f"📊 **1-Min Vol:** `${volume_1m}`\n"
         f"{wallet_info}\n\n"
         f"```{item['address']}```\n"
@@ -281,7 +281,7 @@ async def send_coins(channel, task_type):
             'new_creation': 'true',
             'filters[]': 'has_socials',
             'min_marketcap': '3800',
-            'max_marketcap': '8000',
+            'max_marketcap': '9000',
             'min_holder_count': '18',
         },
         "completing": {
