@@ -199,8 +199,8 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
 
 
     embed.set_footer(
-        donate= f"Donate: `7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n",
-        disclaimer= f"Disclaimer: This is not financial advice alway DYOR.",
+        name=f"Donate: `7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n",
+        text=f"Disclaimer: This is not financial advice alway DYOR.",
     )
 
     return embed
