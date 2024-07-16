@@ -127,7 +127,13 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         color=0x00ff00
     )
 
-    embed.set_thumbnail(url="{item['logo']}")
+    if 'ipfs/' in item['logo']:
+        ipfs_hash = item['logo'].split('ipfs/')[-1]
+        logo_url = f"https://pump.mypinata.cloud/ipfs/{ipfs_hash}"
+    else:
+        logo_url = item['logo']
+        
+    embed.set_thumbnail(url=logo_url)
 
     photon_link = f"https://photon-sol.tinyastro.io/en/r/@RickBurpBot/{item['address']}"
     bullx_link = f"https://bullx.io/terminal?chainId=1399811149&address={item['address']}&r=M7B0AY33YBS"
@@ -158,8 +164,8 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     wallet_counts = fetch_wallet_counts(item['address'])
     wallet_info = (
         f"👝 **Wallet Counts:**\n"
-        f"🦈 **Whales:** `{wallet_counts['whale_wallets']} | 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
-        f"🐀 **Rats:** `{wallet_counts['rat_trader_wallets']}`🔫 **Snipers:** `{wallet_counts['sniper_wallets']}\n"
+        f"🦈 **Whales:** `{wallet_counts['whale_wallets']}` 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
+        f"🐀 **Rats:** `{wallet_counts['rat_trader_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
     ) if wallet_counts and wallet_counts['sniper_wallets'] <= 5 else ""
 
     field_value = (
@@ -173,7 +179,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         f"---\n"
         f"👁️ First seen at `${seen_coins[coin_key]['called_mcap']}` | `{percentage_change} {trend_indicator}`\n"
         f"---\n"
-        f"{wallet_info}\n\n"
+        f"{wallet_info}\n"
         f"```{item['address']}```\n"
         f"[Snipe with Pepeboost]({pepeboost_link})\n"
         f"[Snipe with Trojan]({trojan_link})\n"
@@ -420,6 +426,7 @@ async def reboot(ctx):
         if not await admin_command(ctx):
             await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
             return
+        stopped_any = False
         for task_type in ["soaring", "new", "completing"]:
             if ctx.channel.id in running_tasks[task_type]:
                 await running_tasks[task_type][ctx.channel.id].close()
@@ -427,7 +434,11 @@ async def reboot(ctx):
                 scheduler = await aiojobs.create_scheduler()
                 task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type))
                 running_tasks[task_type][ctx.channel.id] = task
-        await ctx.send('Rebooted the coin information sending loops. 🔄', ephemeral=True)
+                stopped_any = True
+        if stopped_any:
+            await ctx.send('Rebooted the coin information sending loops. 🔄', ephemeral=True)
+        else:
+            await ctx.send('No active tasks to reboot. ❌', ephemeral=True)
     except Exception as e:
         logging.error(f"Error in reboot command: {e}")
 
