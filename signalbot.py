@@ -181,10 +181,8 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         f"{wallet_info}\n"
         f"---\n"
         f"```{item['address']}```\n"
-        f"[Snipe Pepeboost]({pepeboost_link})\n"
-        f"[Snipe Trojan]({trojan_link})\n"
-        f"[Snipe Photon]({photon_link})\n"
-        f"[Snipe BullX]({bullx_link})\n"
+        f"[Snipe Pepeboost]({pepeboost_link}) | [Snipe Trojan]({trojan_link})\n"
+        f"[Snipe Photon]({photon_link}) | [Snipe BullX]({bullx_link})\n"
     )
 
     if len(field_value) > 1024:
@@ -197,10 +195,8 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         inline=False
     )
 
-
     embed.set_footer(
-        name=f"Donate: `7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n",
-        text=f"Disclaimer: This is not financial advice alway DYOR.",
+        text=f"Disclaimer: This is not financial advice. Always DYOR. \n Donate: `7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`",
     )
 
     return embed
