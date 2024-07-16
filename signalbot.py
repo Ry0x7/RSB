@@ -172,17 +172,20 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         f"{social_links}\n"
         f"💊 **[Pump]({pumpfun_link})**\n"
         f"---\n"
-        f"💎 **MCAP:** `${market_cap}`  🕰️ **Created:** `{created_time_since}`\n"
-        f"👥 **Holders:** `{holder_count}` 💬 **Rp** `{reply_count}` 🏆 **Top 10** `{top_10_holder_rate:.2f}%`\n"
-        f"💸 **Dexpaid?:** {'✅' if dex_paid else '❌'} | 🛠️ **Dev Sold?:** {dev_sold}\n"
+        f"💎 **MCAP:** `${market_cap}`\n"
+        f"🕰️ **Made:** `{created_time_since}`\n"
+        f"👥 **Holders:** `{holder_count}` 💬 **Rp**: `{reply_count}`\n"
+        f"🏆 **Top 10**: `{top_10_holder_rate:.2f}%`\n"
+        f"💸 **Dexpaid?:** {'✅' if dex_paid else '❌'}\n"
+        f"🛠️ **Dev Sold?:** {dev_sold}\n"
         f"📈 **Bonding Progress:** `{progress:.2f}%`  📊 **1-Min Vol:** `${volume_1m}`\n"
         f"---\n"
-        f"👁️ Seen Mcap: `${seen_coins[coin_key]['called_mcap']}` | `{percentage_change} {trend_indicator}`\n"
+        f"👁️ Seen Mcap: `${seen_coins[coin_key]['called_mcap']} {percentage_change}{trend_indicator}`\n"
         f"{wallet_info}\n"
         f"---\n"
         f"```{item['address']}```\n"
-        f"[Snipe Pepeboost]({pepeboost_link}) | [Snipe Trojan]({trojan_link})\n"
-        f"[Snipe Photon]({photon_link}) | [Snipe BullX]({bullx_link})\n"
+        f"[Pepeboost]({pepeboost_link}) | [Trojan]({trojan_link})\n"
+        f"[Photon]({photon_link}) | [BullX]({bullx_link})\n"
     )
 
     if len(field_value) > 1024:
@@ -196,7 +199,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     )
 
     embed.set_footer(
-        text=f"Disclaimer: This is not financial advice. Always DYOR. \n Donate: `7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`",
+        text=f"Disclaimer: This is not financial advice. Always DYOR.\nDonations: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu",
     )
 
     return embed
