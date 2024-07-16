@@ -162,11 +162,15 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         social_links = f"SOCIALS = {social_links}"
 
     wallet_counts = fetch_wallet_counts(item['address'])
+    if wallet_counts and wallet_counts['sniper_wallets'] > 5:
+        logging.info(f"Token {item['address']} has more than 5 sniper wallets. Skipping.")
+        return None  # Skip this token
+
     wallet_info = (
         f"👝 **Wallets:**\n"
         f"🦈 **Whales:** `{wallet_counts['whale_wallets']}` 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
         f"🐀 **Rats:** `{wallet_counts['rat_trader_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
-    ) if wallet_counts and wallet_counts['sniper_wallets'] <= 5 else ""
+    ) if wallet_counts else ""
 
     field_value = (
         f"{social_links}\n"
@@ -181,8 +185,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         f"---\n"
         f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']}|{percentage_change}{trend_indicator}`\n"
         f"📊 **1-Min Vol:** `${volume_1m}`\n"
-        f"{wallet_info}\n"
-        f"---\n"
+        f"{wallet_info}\n\n"
         f"```{item['address']}```\n"
         f"[Pepeboost]({pepeboost_link}) | [Trojan]({trojan_link})\n"
         f"[Photon]({photon_link}) | [BullX]({bullx_link})\n"
