@@ -14,6 +14,7 @@ bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
 
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
 SEARCH_API_BASE_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/sol/search?q='
+WALLET_COUNT_API_BASE_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/tag_wallet_count/sol/'
 
 last_data = {
     "soaring": None,
@@ -98,10 +99,16 @@ def calculate_percentage_change(original, current):
     trend_indicator = "🟢" if change > 0 else "🔴" if change < 0 else ""
     return f"{change:.2f}%", trend_indicator
 
-def format_embed(item, title, task_type, updated=False, trend="", percentage_change="", trend_indicator=""):
-    if not item['address'].endswith('pump'):
-        return None
+def fetch_wallet_counts(address):
+    url = f"{WALLET_COUNT_API_BASE_URL}{address}"
+    data = fetch_data(url)
+    if data and data['code'] == 0:
+        return data['data']
+    else:
+        logging.error(f"No valid data returned for wallet counts of address {address}")
+    return None
 
+def format_embed(item, title, updated=False, trend="", percentage_change="", trend_indicator=""):
     top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
     if top_10_holder_rate >= 40:
         return None
@@ -117,15 +124,18 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         color=0x00ff00
     )
 
+    embed.set_thumbnail(url="{item['logo']}")
+
     photon_link = f"https://photon-sol.tinyastro.io/en/r/@RickBurpBot/{item['address']}"
     bullx_link = f"https://bullx.io/terminal?chainId=1399811149&address={item['address']}&r=M7B0AY33YBS"
+    pepeboost_link = f"https://t.me/pepeboost_sol04_bot?start={item['address']}"
+    trojan_link = f"https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']}"
     pumpfun_link = f"https://pump.fun/{item['address']}"
-    dex_ad = item.get('dexscr_ad', 0) == 1
-    dex_paid = item.get('dexscr_update_link', 0) == 1
+    dex_paid = item.get('dexscr_update_link', 0) == 1 and item.get('dexscr_ad', 0) == 1
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
     holder_count = item.get('holder_count', 'N/A')
-    volume_5m = f"{float(item.get('volume_5m', 0.0) or 0.0):.2f}"
+    volume_5m = f"{float(item.get('volume_1m', 0.0) or 0.0):.2f}"
     market_cap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 'N/A'
     progress = float(item.get('progress', 0.0) or 0.0) * 100
     reply_count = item.get('reply_count', 'N/A')
@@ -142,6 +152,13 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     if social_links:
         social_links = f"SOCIALS = {social_links}"
 
+    wallet_counts = fetch_wallet_counts(item['address'])
+    wallet_info = (
+        f"👝 **Wallet Counts:**\n"
+        f"🦈 **Whales:** `{wallet_counts['whale_wallets']} | 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
+        f"🐀 **Rats:** `{wallet_counts['rat_trader_wallets']}`🔫 **Snipers:** `{wallet_counts['sniper_wallets']}\n"
+    ) if wallet_counts and wallet_counts['sniper_wallets'] <= 5 else ""
+
     field_value = (
         f"{social_links}\n"
         f"💊 **[PumpFun]({pumpfun_link})**\n"
@@ -153,9 +170,12 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         f"---\n"
         f"👁️ First seen at `${seen_coins[coin_key]['called_mcap']}` | `{percentage_change} {trend_indicator}`\n"
         f"---\n"
+        f"{wallet_info}\n\n"
         f"```{item['address']}```\n"
-        f"[PHOTON: {item['address']}]({photon_link})\n"
-        f"[BULLX: {item['address']}]({bullx_link})\n"
+        f"[Snipe with Pepeboost]({pepeboost_link})\n"
+        f"[Snipe with Trojan]({trojan_link})\n"
+        f"[Snipe with Photon]({photon_link})\n"
+        f"[Snipe with Bullx]({bullx_link})\n"
     )
 
     if len(field_value) > 1024:
@@ -169,15 +189,17 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     )
 
     donation_message = (
-        f"Donations Accepted/Encouraged\n"
-        f"`Rodent: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n"
-        f"For Business Inquiries: https://t.me/j3rrycr3dits\n"
+        f"Donate: `7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`\n"
     )
 
     embed.add_field(
         name="Donations & Business Inquiries",
         value=donation_message,
         inline=False
+    )
+    
+    embed.set_footer(
+        text= f"Disclaimer: This is not financial advice alway DYOR and manage your risk.",
     )
 
     return embed
@@ -256,8 +278,7 @@ async def send_coins(channel, task_type):
             'new_creation': 'true',
             'filters[]': 'has_socials',
             'min_marketcap': '3800',
-            'max_marketcap': '9000',
-            'min_volume': '1800',
+            'max_marketcap': '8000',
             'min_holder_count': '18',
         },
         "completing": {
@@ -400,10 +421,9 @@ async def reboot(ctx):
             if ctx.channel.id in running_tasks[task_type]:
                 await running_tasks[task_type][ctx.channel.id].close()
                 del running_tasks[task_type][ctx.channel.id]
-        scheduler = await aiojobs.create_scheduler()
-        for task_type in ["soaring", "new", "completing"]:
-            task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type))
-            running_tasks[task_type][ctx.channel.id] = task
+                scheduler = await aiojobs.create_scheduler()
+                task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type))
+                running_tasks[task_type][ctx.channel.id] = task
         await ctx.send('Rebooted the coin information sending loops. 🔄', ephemeral=True)
     except Exception as e:
         logging.error(f"Error in reboot command: {e}")
