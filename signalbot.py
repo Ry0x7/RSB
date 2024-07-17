@@ -270,11 +270,11 @@ async def send_coins(channel, task_type):
             'orderby': 'usd_market_cap',
             'direction': 'desc',
             'pump': 'true',
-            'min_marketcap': '40000',
-            'max_marketcap': '60000',
-            'min_holder_count': '100',
+            'min_marketcap': '45000',
+            'max_marketcap': '80000',
+            'min_holder_count': '130',
             'filters[]': 'has_socials',
-            'min_volume': '2000',
+            'min_volume': '5000',
         }
     }
     try:
