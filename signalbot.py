@@ -114,7 +114,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         
     embed.set_image(url=logo_url)
 
-    photon_link = f"https://photon-sol.tinyastro.io/en/r/@RickBurpBot/{item['address']}"
+    photon_link = f"https://photon-sol.tinyastro.io/en/r/@rodent0x/{item['address']}"
     bullx_link = f"https://bullx.io/terminal?chainId=1399811149&address={item['address']}"
     pepeboost_link = f"https://t.me/pepeboost_sol04_bot?start={item['address']}"
     trojan_link = f"https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']}"
