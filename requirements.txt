@@ -10,10 +10,12 @@ discord-py-interactions==5.13.1
 discord-py-slash-command==4.2.1
 discord-typings==0.9.0
 discord.py==2.4.0
+dnspython==2.6.1
 emoji==2.12.1
 frozenlist==1.4.1
 idna==3.7
 multidict==6.0.5
+pymongo==4.8.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
 pytz==2024.1
