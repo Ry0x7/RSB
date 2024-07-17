@@ -282,6 +282,7 @@ async def send_coins(channel, task_type):
             'new_creation': 'true',
             'filters[]': 'has_socials',
             'min_marketcap': '3800',
+            'max_marketcap': '9000',
             'min_holder_count': '15',
             'max_created': '10m'
         },
