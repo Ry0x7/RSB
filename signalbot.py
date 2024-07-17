@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import asyncio
 import dotenv
 import os
-import sqlite3
+import pymongo
 
 dotenv.load_dotenv()
 
@@ -16,6 +16,12 @@ BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
 SEARCH_API_BASE_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/sol/search?q='
 WALLET_COUNT_API_BASE_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/tag_wallet_count/sol/'
 
+MONGO_URI = os.getenv('MONGO_URI')
+mongo_client = pymongo.MongoClient(MONGO_URI)
+db = mongo_client['crypto_bot']
+coins_collection = db['coins']
+sessions_collection = db['sessions']
+
 last_data = {
     "soaring": None,
     "new": None,
@@ -24,19 +30,6 @@ last_data = {
 owner_username = "chakazzz"
 
 logging.basicConfig(level=logging.INFO)
-
-conn = sqlite3.connect('coins.db')
-c = conn.cursor()
-c.execute('''
-    CREATE TABLE IF NOT EXISTS coins (
-        address TEXT PRIMARY KEY,
-        name TEXT,
-        symbol TEXT,
-        called_mcap INTEGER,
-        called_at TEXT
-    )
-''')
-conn.commit()
 
 running_tasks = {
     "soaring": {},
@@ -64,32 +57,10 @@ def fetch_data(url):
         logging.error(f"Request exception occurred: {e}")
     return None
 
-def fetch_wallet_and_coin_data(base_url, params):
-    coin_data = fetch_data(build_query_url(base_url, params))
-    if not coin_data:
-        return None, None
-    valid_addresses = {item['address'] for item in coin_data['data']['rank']}
-    wallet_data = {address: fetch_data(f"{WALLET_COUNT_API_BASE_URL}{address}") for address in valid_addresses}
-    return coin_data, wallet_data
-
 def get_time_since_creation(created_timestamp):
     created_time = datetime.utcfromtimestamp(created_timestamp)
     now = datetime.utcnow()
     time_diff = now - created_time
-    
-    if time_diff < timedelta(minutes=1):
-        return f"{time_diff.seconds} seconds ago"
-    elif time_diff < timedelta(hours=1):
-        return f"{time_diff.seconds // 60} minutes ago"
-    elif time_diff < timedelta(days=1):
-        return f"{time_diff.seconds // 3600} hours ago"
-    else:
-        return f"{time_diff.days} days ago"
-
-def get_time_since_message(timestamp):
-    message_time = datetime.utcfromtimestamp(timestamp / 1000)
-    now = datetime.utcnow()
-    time_diff = now - message_time
     
     if time_diff < timedelta(minutes=1):
         return f"{time_diff.seconds} seconds ago"
@@ -107,7 +78,16 @@ def calculate_percentage_change(original, current):
     trend_indicator = "🟢" if change > 0 else "🔴" if change < 0 else ""
     return f"{change:.2f}%", trend_indicator
 
-def format_embed(item, wallet_counts, title, task_type, updated=False, trend="", percentage_change="", trend_indicator=""):
+def fetch_wallet_counts(address):
+    url = f"{WALLET_COUNT_API_BASE_URL}{address}"
+    data = fetch_data(url)
+    if data and data['code'] == 0:
+        return data['data']
+    else:
+        logging.error(f"No valid data returned for wallet counts of address {address}")
+    return None
+
+def format_embed(item, title, task_type, updated=False, trend="", percentage_change="", trend_indicator=""):
     if not item['address'].endswith('pump'):
         return None
     
@@ -144,7 +124,7 @@ def format_embed(item, wallet_counts, title, task_type, updated=False, trend="",
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
     holder_count = item.get('holder_count', 'N/A')
     volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))  # Remove decimals and convert to int
-    if volume_1m < 300:
+    if volume_1m < 500:
         return None  # Skip coins with 1-minute volume below 100
     market_cap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 'N/A'
     progress = float(item.get('progress', 0.0) or 0.0) * 100
@@ -162,6 +142,7 @@ def format_embed(item, wallet_counts, title, task_type, updated=False, trend="",
     if social_links:
         social_links = f"SOCIALS = {social_links}"
 
+    wallet_counts = fetch_wallet_counts(item['address'])
     if wallet_counts and wallet_counts['sniper_wallets'] > 5:
         logging.info(f"Token {item['address']} has more than 5 sniper wallets. Skipping.")
         return None  # Skip this token
@@ -206,7 +187,7 @@ def format_embed(item, wallet_counts, title, task_type, updated=False, trend="",
 
     return embed
 
-async def send_or_update_embed(channel, item, wallet_counts, title, task_type):
+async def send_or_update_embed(channel, item, title, task_type):
     sent_messages_task = sent_messages[task_type]
     updated = item['address'] in sent_messages_task
     trend = ""
@@ -222,7 +203,7 @@ async def send_or_update_embed(channel, item, wallet_counts, title, task_type):
             trend = "Downtrend 📉"
         seen_coins[(item['name'], item['symbol'])]['market_cap'] = current_mcap
 
-    embed = format_embed(item, wallet_counts, title, task_type, updated, trend, percentage_change, trend_indicator)
+    embed = format_embed(item, title, task_type, updated, trend, percentage_change, trend_indicator)
     if not embed:
         return
     
@@ -297,11 +278,12 @@ async def send_coins(channel, task_type):
         }
     }
     try:
-        coin_data, wallet_data = fetch_wallet_and_coin_data(BASE_URL, params[task_type])
-        if coin_data and coin_data['data']['rank'] != last_data[task_type]:
-            last_data[task_type] = coin_data['data']['rank']
-            valid_addresses = {item['address'] for item in coin_data['data']['rank']}
-            for item in coin_data['data']['rank']:
+        url = build_query_url(BASE_URL, params[task_type])
+        data = fetch_data(url)
+        if data and data['data']['rank'] != last_data[task_type]:
+            last_data[task_type] = data['data']['rank']
+            valid_addresses = {item['address'] for item in data['data']['rank']}
+            for item in data['data']['rank']:
                 coin_key = (item['name'], item['symbol'])
                 if coin_key not in seen_coins:
                     seen_coins[coin_key] = {
@@ -309,14 +291,25 @@ async def send_coins(channel, task_type):
                         'called_mcap': int(item['usd_market_cap']),
                         'market_cap': int(item['usd_market_cap'])
                     }
-                    c.execute('INSERT OR REPLACE INTO coins (address, name, symbol, called_mcap, called_at) VALUES (?, ?, ?, ?, ?)', 
-                              (item['address'], item['name'], item['symbol'], int(item['usd_market_cap']), datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')))
-                    conn.commit()
+                    coins_collection.update_one(
+                        {'address': item['address']},
+                        {'$set': {
+                            'name': item['name'],
+                            'symbol': item['symbol'],
+                            'called_mcap': int(item['usd_market_cap']),
+                            'called_at': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+                        }},
+                        upsert=True
+                    )
                 else:
                     seen_coins[coin_key]['market_cap'] = int(item['usd_market_cap'])
-                wallet_counts = wallet_data.get(item['address'])
-                await send_or_update_embed(channel, item, wallet_counts, f"🚀 {task_type.capitalize()} Coin", task_type)
+                await send_or_update_embed(channel, item, f"🚀 {task_type.capitalize()} Coin", task_type)
             await delete_old_messages(channel, valid_addresses, task_type)
+            sessions_collection.update_one(
+                {'channel_id': channel.id, 'task_type': task_type},
+                {'$set': {'valid_addresses': list(valid_addresses)}},
+                upsert=True
+            )
     except Exception as e:
         logging.error(f"Error in send_coins: {e}")
 
@@ -338,7 +331,16 @@ def fetch_current_market_cap(address):
 @bot.event
 async def on_ready():
     logging.info(f'Bot logged in as {bot.me.name}')
+    await resume_sessions()
     asyncio.create_task(monitor_tasks())
+
+async def resume_sessions():
+    active_sessions = sessions_collection.find({})
+    for session in active_sessions:
+        channel = await bot.fetch_channel(session['channel_id'])
+        task_type = session['task_type']
+        valid_addresses = set(session['valid_addresses'])
+        running_tasks[task_type][channel.id] = await aiojobs.create_scheduler().spawn(loop_send_coins(channel, task_type, valid_addresses))
 
 async def admin_command(ctx):
     guild = await bot.fetch_guild(ctx.guild_id)
@@ -442,14 +444,13 @@ async def reboot(ctx):
 )
 async def leaderboard(ctx):
     try:
-        c.execute("SELECT address, name, symbol, called_mcap, called_at FROM coins WHERE called_mcap >= 55000")
-        rows = c.fetchall()
+        coins = coins_collection.find({'called_mcap': {'$gte': 55000}})
         
         leaderboard_data = []
-        for row in rows:
-            current_mcap = fetch_current_market_cap(row[0])
+        for coin in coins:
+            current_mcap = fetch_current_market_cap(coin['address'])
             if current_mcap and current_mcap >= 55000:
-                leaderboard_data.append((row[1], row[2], current_mcap, row[3], row[4]))
+                leaderboard_data.append((coin['name'], coin['symbol'], current_mcap, coin['called_mcap'], coin['called_at']))
         
         leaderboard_data.sort(key=lambda x: x[2], reverse=True)  # Sort by current market cap
         
@@ -463,11 +464,11 @@ async def leaderboard(ctx):
                 value=f"Current MCAP: ${data[2]:,}\nCalled at ${data[3]:,} on {data[4]}",
                 inline=False
             )
-        await ctx.send(embeds=[embed], ephemeral=True)
+        await ctx.send(embeds=[embed])
     except Exception as e:
         logging.error(f"Error in leaderboard command: {e}")
 
-async def loop_send_coins(channel, task_type):
+async def loop_send_coins(channel, task_type, valid_addresses=None):
     while True:
         try:
             await send_coins(channel, task_type)
@@ -482,8 +483,7 @@ async def monitor_tasks():
                 if task.done():
                     logging.warning(f"Task for channel {channel_id} has stopped. Restarting {task_type} task...")
                     channel = await bot.fetch_channel(channel_id)
-                    scheduler = await aiojobs.create_scheduler()
-                    new_task = await scheduler.spawn(loop_send_coins(channel, task_type))
+                    new_task = await aiojobs.create_scheduler().spawn(loop_send_coins(channel, task_type))
                     running_tasks[task_type][channel_id] = new_task
         await asyncio.sleep(60)
 
