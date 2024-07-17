@@ -133,7 +133,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     else:
         logo_url = item['logo']
         
-    embed.set_thumbnail(url=logo_url)
+    embed.set_image(url=logo_url)
 
     photon_link = f"https://photon-sol.tinyastro.io/en/r/@RickBurpBot/{item['address']}"
     bullx_link = f"https://bullx.io/terminal?chainId=1399811149&address={item['address']}"
@@ -145,7 +145,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
     holder_count = item.get('holder_count', 'N/A')
     volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))  # Remove decimals and convert to int
-    if volume_1m < 200:
+    if volume_1m < 100:
         return None  # Skip coins with 1-minute volume below 100
     market_cap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 'N/A'
     progress = float(item.get('progress', 0.0) or 0.0) * 100
@@ -185,7 +185,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
         f"🛠️ **Dev Sold?:** {dev_sold}\n"
         f"📈 **Bonding Progress:** `{progress:.2f}%`\n"
         f"---\n"
-        f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']}/{percentage_change}{trend_indicator}`\n"
+        f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']}|{percentage_change}{trend_indicator}`\n"
         f"📊 **1-Min Vol:** `${volume_1m}`\n"
         f"{wallet_info}\n\n"
         f"```{item['address']}```\n"
