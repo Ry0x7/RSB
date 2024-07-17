@@ -64,6 +64,14 @@ def fetch_data(url):
         logging.error(f"Request exception occurred: {e}")
     return None
 
+def fetch_wallet_and_coin_data(base_url, params):
+    coin_data = fetch_data(build_query_url(base_url, params))
+    if not coin_data:
+        return None, None
+    valid_addresses = {item['address'] for item in coin_data['data']['rank']}
+    wallet_data = {address: fetch_data(f"{WALLET_COUNT_API_BASE_URL}{address}") for address in valid_addresses}
+    return coin_data, wallet_data
+
 def get_time_since_creation(created_timestamp):
     created_time = datetime.utcfromtimestamp(created_timestamp)
     now = datetime.utcnow()
@@ -99,16 +107,7 @@ def calculate_percentage_change(original, current):
     trend_indicator = "🟢" if change > 0 else "🔴" if change < 0 else ""
     return f"{change:.2f}%", trend_indicator
 
-def fetch_wallet_counts(address):
-    url = f"{WALLET_COUNT_API_BASE_URL}{address}"
-    data = fetch_data(url)
-    if data and data['code'] == 0:
-        return data['data']
-    else:
-        logging.error(f"No valid data returned for wallet counts of address {address}")
-    return None
-
-def format_embed(item, title, task_type, updated=False, trend="", percentage_change="", trend_indicator=""):
+def format_embed(item, wallet_counts, title, task_type, updated=False, trend="", percentage_change="", trend_indicator=""):
     if not item['address'].endswith('pump'):
         return None
     
@@ -163,7 +162,6 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     if social_links:
         social_links = f"SOCIALS = {social_links}"
 
-    wallet_counts = fetch_wallet_counts(item['address'])
     if wallet_counts and wallet_counts['sniper_wallets'] > 5:
         logging.info(f"Token {item['address']} has more than 5 sniper wallets. Skipping.")
         return None  # Skip this token
@@ -208,7 +206,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
 
     return embed
 
-async def send_or_update_embed(channel, item, title, task_type):
+async def send_or_update_embed(channel, item, wallet_counts, title, task_type):
     sent_messages_task = sent_messages[task_type]
     updated = item['address'] in sent_messages_task
     trend = ""
@@ -224,7 +222,7 @@ async def send_or_update_embed(channel, item, title, task_type):
             trend = "Downtrend 📉"
         seen_coins[(item['name'], item['symbol'])]['market_cap'] = current_mcap
 
-    embed = format_embed(item, title, task_type, updated, trend, percentage_change, trend_indicator)
+    embed = format_embed(item, wallet_counts, title, task_type, updated, trend, percentage_change, trend_indicator)
     if not embed:
         return
     
@@ -299,12 +297,11 @@ async def send_coins(channel, task_type):
         }
     }
     try:
-        url = build_query_url(BASE_URL, params[task_type])
-        data = fetch_data(url)
-        if data and data['data']['rank'] != last_data[task_type]:
-            last_data[task_type] = data['data']['rank']
-            valid_addresses = {item['address'] for item in data['data']['rank']}
-            for item in data['data']['rank']:
+        coin_data, wallet_data = fetch_wallet_and_coin_data(BASE_URL, params[task_type])
+        if coin_data and coin_data['data']['rank'] != last_data[task_type]:
+            last_data[task_type] = coin_data['data']['rank']
+            valid_addresses = {item['address'] for item in coin_data['data']['rank']}
+            for item in coin_data['data']['rank']:
                 coin_key = (item['name'], item['symbol'])
                 if coin_key not in seen_coins:
                     seen_coins[coin_key] = {
@@ -317,7 +314,8 @@ async def send_coins(channel, task_type):
                     conn.commit()
                 else:
                     seen_coins[coin_key]['market_cap'] = int(item['usd_market_cap'])
-                await send_or_update_embed(channel, item, f"🚀 {task_type.capitalize()} Coin", task_type)
+                wallet_counts = wallet_data.get(item['address'])
+                await send_or_update_embed(channel, item, wallet_counts, f"🚀 {task_type.capitalize()} Coin", task_type)
             await delete_old_messages(channel, valid_addresses, task_type)
     except Exception as e:
         logging.error(f"Error in send_coins: {e}")
