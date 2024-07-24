@@ -198,9 +198,9 @@ async def send_or_update_embed(channel, item, title, task_type):
         current_mcap = int(item['usd_market_cap'])
         percentage_change, trend_indicator = calculate_percentage_change(seen_coins[(item['name'], item['symbol'])]['called_mcap'], current_mcap)
         if current_mcap > previous_mcap:
-            trend = "Sending!! 📈"
+            trend = "Sending! 📈"
         elif current_mcap < previous_mcap:
-            trend = "Dipping!! 📉"
+            trend = "Dipping! 📉"
         seen_coins[(item['name'], item['symbol'])]['market_cap'] = current_mcap
 
     embed = format_embed(item, title, task_type, updated, trend, percentage_change, trend_indicator)
@@ -248,7 +248,7 @@ async def send_coins(channel, task_type):
             'orderby': 'progress',
             'direction': 'desc',
             'soaring': 'true',
-            'min_volume': '10000',
+            'min_volume': '5000',
             'min_marketcap': '9000',
             'max_marketcap': '30000',
             'filters[]': 'has_socials',
