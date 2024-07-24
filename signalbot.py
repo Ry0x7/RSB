@@ -119,7 +119,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     pepeboost_link = f"https://t.me/pepeboost_sol04_bot?start={item['address']}"
     trojan_link = f"https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']}"
     pumpfun_link = f"https://pump.fun/{item['address']}"
-    dex_paid = item.get('dexscr_update_link', 0) == 1 and item.get('dexscr_ad', 0) == 1
+    dex_paid = item.get('dexscr_update_link', 0) == 1 or item.get('dexscr_ad', 0) == 1
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
     holder_count = item.get('holder_count', 'N/A')
@@ -198,9 +198,9 @@ async def send_or_update_embed(channel, item, title, task_type):
         current_mcap = int(item['usd_market_cap'])
         percentage_change, trend_indicator = calculate_percentage_change(seen_coins[(item['name'], item['symbol'])]['called_mcap'], current_mcap)
         if current_mcap > previous_mcap:
-            trend = "Uptrend 📈"
+            trend = "Sending!! 📈"
         elif current_mcap < previous_mcap:
-            trend = "Downtrend 📉"
+            trend = "Dipping!! 📉"
         seen_coins[(item['name'], item['symbol'])]['market_cap'] = current_mcap
 
     embed = format_embed(item, title, task_type, updated, trend, percentage_change, trend_indicator)
