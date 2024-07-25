@@ -147,6 +147,12 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     if wallet_counts and wallet_counts['sniper_wallets'] > 5:
         logging.info(f"Token {item['address']} has more than 5 sniper wallets. Skipping.")
         return None  # Skip this token
+
+    wallet_info = (
+        f"👝 **Wallets:**\n"
+        f"🦈 **Whales:** `{wallet_counts['whale_wallets']}` 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
+        f"🐀 **Rats:** `{wallet_counts['rat_trader_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
+    ) if wallet_counts else ""
     
     coin_info = (
         f"```{item['address']}```\n"
@@ -173,11 +179,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         f"**[Troj]({trojan_link})**"
     )
     
-    wallet_info = (
-        f"👝 **Wallets:**\n"
-        f"🦈 **Whales:** `{wallet_counts['whale_wallets']}` 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
-        f"🐀 **Rats:** `{wallet_counts['rat_trader_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
-    ) if wallet_counts else ""
+
     
     if len(field_value) > 1024:
         logging.warning(f"Field value for {item['address']} exceeded 1024 characters. Truncating.")
