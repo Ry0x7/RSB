@@ -99,8 +99,9 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
 
     coin_key = (item['name'], item['symbol'])
 
+    address_coin = f"```{item['address']}```"
     embed = interactions.Embed(
-        title="```{item['address']}```\n",
+        title=address_coin,
         color=0x00ff00
     )
     embed.set_author(
