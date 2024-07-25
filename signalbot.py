@@ -98,27 +98,9 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         embed_title = f"{trend} {item['name']} ({item['symbol']})"
 
     coin_key = (item['name'], item['symbol'])
-    pumpfun_link = f"https://pump.fun/{item['address']}"
-    twitter = item.get('twitter', '')
-    website = item.get('website', '')
-    telegram = item.get('telegram', '')
-
-    twitter_link = f"**[X](https://x.com/{twitter})**" if twitter else ""
-    website_link = f"**[Web]({website if website.startswith('http') else 'https://' + website})**" if website else ""
-    telegram_link = f"**[TG]({telegram if telegram.startswith('http') else 'https://' + telegram})**" if telegram else ""
-
-    social_links = " **∙** ".join(filter(None, [telegram_link, twitter_link, website_link]))
-    if social_links:
-        social_links = f"{social_links}"
-        
-    coin_info = (
-        f"```{item['address']}```\n"
-        f"{social_links}\n"
-        f"💊 **[Pump]({pumpfun_link})**\n\n"
-    )
 
     embed = interactions.Embed(
-        title=coin_info,
+        title="```{item['address']}```\n",
         color=0x00ff00
     )
     embed.set_author(
@@ -137,6 +119,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     bullx_link = f"https://bullx.io/terminal?chainId=1399811149&address={item['address']}"
     pepeboost_link = f"https://t.me/pepeboost_sol04_bot?start={item['address']}"
     trojan_link = f"https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']}"
+    pumpfun_link = f"https://pump.fun/{item['address']}"
     dex_paid = item.get('dexscr_update_link', 0) == 1 or item.get('dexscr_ad', 0) == 1
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
@@ -148,6 +131,18 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     progress = float(item.get('progress', 0.0) or 0.0) * 100
     reply_count = item.get('reply_count', 'N/A')
 
+    twitter = item.get('twitter', '')
+    website = item.get('website', '')
+    telegram = item.get('telegram', '')
+
+    twitter_link = f"**[X](https://x.com/{twitter})**" if twitter else ""
+    website_link = f"**[Web]({website if website.startswith('http') else 'https://' + website})**" if website else ""
+    telegram_link = f"**[TG]({telegram if telegram.startswith('http') else 'https://' + telegram})**" if telegram else ""
+
+    social_links = " **∙** ".join(filter(None, [telegram_link, twitter_link, website_link]))
+    if social_links:
+        social_links = f"{social_links}"
+
     wallet_counts = fetch_wallet_counts(item['address'])
     if wallet_counts and wallet_counts['sniper_wallets'] > 5:
         logging.info(f"Token {item['address']} has more than 5 sniper wallets. Skipping.")
@@ -158,6 +153,11 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         f"🐀 **Rats:** `{wallet_counts['rat_trader_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
     ) if wallet_counts else ""
     
+    coin_info = (
+        f"{social_links}\n"
+        f"💊 **[Pump]({pumpfun_link})**\n\n"
+    )
+
     field_value = (
         f"📈 **Progress:** `{progress:.2f}%` \n🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
         f"💎 **FDV:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
