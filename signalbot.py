@@ -190,18 +190,13 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         field_value = field_value[:1021] + "..."
     
     embed.add_field(
-        name="",
-        value=coin_info,
+        name="Coin Data",
+        value=coin_info + field_value,
         inline=False
     )
     
     embed.add_field(
-        name="Details",
-        value=field_value,
-        inline=False
-    )
-    embed.add_field(
-        name="",
+        name="Rug Check",
         value=other_info,
         inline=True
     )
