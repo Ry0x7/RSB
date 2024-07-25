@@ -165,6 +165,9 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         f"👥 **Hldrs:** `{holder_count}` 💬 **Rp**: `{reply_count}`\n"
         f"**Dex paid?:** {'✅' if dex_paid else '❌'} ∙ **Dev Sold?:** {dev_sold}\n"
         f"---\n"
+
+    )
+    other_info = (
         f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']} / {percentage_change}{trend_indicator}`\n"
         f"📊 **1m-Vol:** `${volume_1m}`\n"
         f"{wallet_info}\n"
@@ -187,7 +190,6 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         field_value = field_value[:1021] + "..."
     
     embed.add_field(
-        name="Coin Information",
         value=coin_info,
         inline=False
     )
@@ -197,6 +199,11 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         value=field_value,
         inline=False
     )
+    embed.add_field(
+        value=other_info,
+        inline=True
+    )
+    
     embed.add_field(
         name="Quick Buy",
         value=quick_buy,
