@@ -190,6 +190,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         field_value = field_value[:1021] + "..."
     
     embed.add_field(
+        name="",
         value=coin_info,
         inline=False
     )
@@ -200,6 +201,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         inline=False
     )
     embed.add_field(
+        name="",
         value=other_info,
         inline=True
     )
