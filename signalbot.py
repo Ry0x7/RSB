@@ -89,9 +89,6 @@ def fetch_wallet_counts(address):
     return None
 
 def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator=""):
-    if not item['address'].endswith('pump'):
-        return None
-    
     top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
     if top_10_holder_rate >= 40:
         return None
@@ -103,8 +100,11 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     coin_key = (item['name'], item['symbol'])
 
     embed = interactions.Embed(
-        title=embed_title,
+        title=coin_info,
         color=0x00ff00
+    )
+    embed.set_author(
+        name=embed_title
     )
 
     if 'ipfs/' in item['logo']:
@@ -135,11 +135,11 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     website = item.get('website', '')
     telegram = item.get('telegram', '')
 
-    twitter_link = f"[X](https://x.com/{twitter})" if twitter else ""
-    website_link = f"[Web]({website if website.startswith('http') else 'https://' + website})" if website else ""
-    telegram_link = f"[TG]({telegram if telegram.startswith('http') else 'https://' + telegram})" if telegram else ""
+    twitter_link = f"**[X](https://x.com/{twitter})**" if twitter else ""
+    website_link = f"**[Web]({website if website.startswith('http') else 'https://' + website})**" if website else ""
+    telegram_link = f"**[TG]({telegram if telegram.startswith('http') else 'https://' + telegram})**" if telegram else ""
 
-    social_links = " ∙ ".join(filter(None, [telegram_link, twitter_link, website_link]))
+    social_links = " **∙** ".join(filter(None, [telegram_link, twitter_link, website_link]))
     if social_links:
         social_links = f"{social_links}"
 
@@ -156,11 +156,11 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     coin_info = (
         f"```{item['address']}```\n"
         f"{social_links}\n"
-        f"💊 **[Pump]({pumpfun_link})**\n"
+        f"💊 **[Pump]({pumpfun_link})**\n\n"
     )
 
     field_value = (
-        f"📈 **Progress:** `{progress:.2f}%` 🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
+        f"📈 **Progress:** `{progress:.2f}%` \n🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
         f"💎 **FDV:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
         f"👥 **Hldrs:** `{holder_count}` 💬 **Rp**: `{reply_count}`\n"
         f"**Dex paid?:** {'✅' if dex_paid else '❌'} ∙ **Dev Sold?:** {dev_sold}\n"
@@ -170,7 +170,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     other_info = (
         f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']} / {percentage_change}{trend_indicator}`\n"
         f"📊 **1m-Vol:** `${volume_1m}`\n"
-        f"{wallet_info}\n"
+        f"{wallet_info}\n\n\n"
     )
 
     quick_buy = (
@@ -191,7 +191,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     
     embed.add_field(
         name="Coin Data",
-        value=coin_info + field_value,
+        value=field_value,
         inline=False
     )
     
