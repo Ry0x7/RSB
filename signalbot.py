@@ -149,7 +149,6 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         return None  # Skip this token
 
     wallet_info = (
-        f"👝 **Wallets:**\n"
         f"🦈 **Whales:** `{wallet_counts['whale_wallets']}` 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
         f"🐀 **Rats:** `{wallet_counts['rat_trader_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
     ) if wallet_counts else ""
@@ -157,14 +156,13 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     coin_info = (
         f"```{item['address']}```\n"
         f"{social_links}\n"
-        f"💊 **[Pump]({pumpfun_link})**\n\n"
-        f"📈 **Bonding Progress:** `{progress:.2f}%`\n"
+        f"💊 **[Pump]({pumpfun_link})**\n"
     )
 
     field_value = (
+        f"📈 **Progress:** `{progress:.2f}%` 🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
         f"💎 **FDV:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
         f"👥 **Hldrs:** `{holder_count}` 💬 **Rp**: `{reply_count}`\n"
-        f"🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
         f"**Dex paid?:** {'✅' if dex_paid else '❌'} ∙ **Dev Sold?:** {dev_sold}\n"
         f"---\n"
         f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']} / {percentage_change}{trend_indicator}`\n"
@@ -184,7 +182,6 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         f"Donations: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu"
     )
 
-    
     if len(field_value) > 1024:
         logging.warning(f"Field value for {item['address']} exceeded 1024 characters. Truncating.")
         field_value = field_value[:1021] + "..."
@@ -211,6 +208,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     )
 
     return embed
+
 
 async def send_or_update_embed(channel, item, task_type):
     sent_messages_task = sent_messages[task_type]
