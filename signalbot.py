@@ -43,6 +43,7 @@ sent_messages = {
 }
 
 seen_coins = {}
+seen_tickers = {}
 
 def fetch_data(url):
     logging.info(f"Fetching data from URL: {url}")
@@ -63,13 +64,13 @@ def get_time_since_creation(created_timestamp):
     time_diff = now - created_time
     
     if time_diff < timedelta(minutes=1):
-        return f"{time_diff.seconds} seconds ago"
+        return f"{time_diff.seconds}s"
     elif time_diff < timedelta(hours=1):
-        return f"{time_diff.seconds // 60} minutes ago"
+        return f"{time_diff.seconds // 60}m"
     elif time_diff < timedelta(days=1):
-        return f"{time_diff.seconds // 3600} hours ago"
+        return f"{time_diff.seconds // 3600}h"
     else:
-        return f"{time_diff.days} days ago"
+        return f"{time_diff.days}d"
 
 def calculate_percentage_change(original, current):
     if original == 0:
@@ -87,7 +88,7 @@ def fetch_wallet_counts(address):
         logging.error(f"No valid data returned for wallet counts of address {address}")
     return None
 
-def format_embed(item, title, task_type, updated=False, trend="", percentage_change="", trend_indicator=""):
+def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator=""):
     if not item['address'].endswith('pump'):
         return None
     
@@ -95,9 +96,9 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     if top_10_holder_rate >= 40:
         return None
 
-    embed_title = title
+    embed_title = f"{item['name']} ({item['symbol']})"
     if updated:
-        embed_title = f"{trend} {title}"
+        embed_title = f"{trend} {item['name']} ({item['symbol']})"
 
     coin_key = (item['name'], item['symbol'])
 
@@ -112,7 +113,7 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     else:
         logo_url = item['logo']
         
-    embed.set_image(url=logo_url)
+    embed.set_thumbnail(url=logo_url)
 
     photon_link = f"https://photon-sol.tinyastro.io/en/r/@rodent0x/{item['address']}"
     bullx_link = f"https://bullx.io/terminal?chainId=1399811149&address={item['address']}"
@@ -138,56 +139,74 @@ def format_embed(item, title, task_type, updated=False, trend="", percentage_cha
     website_link = f"[Web]({website if website.startswith('http') else 'https://' + website})" if website else ""
     telegram_link = f"[TG]({telegram if telegram.startswith('http') else 'https://' + telegram})" if telegram else ""
 
-    social_links = " | ".join(filter(None, [telegram_link, twitter_link, website_link]))
+    social_links = " ∙ ".join(filter(None, [telegram_link, twitter_link, website_link]))
     if social_links:
-        social_links = f"SOCIALS = {social_links}"
+        social_links = f"{social_links}"
 
     wallet_counts = fetch_wallet_counts(item['address'])
     if wallet_counts and wallet_counts['sniper_wallets'] > 5:
         logging.info(f"Token {item['address']} has more than 5 sniper wallets. Skipping.")
         return None  # Skip this token
+    
+    coin_info = (
+        f"```{item['address']}```\n"
+        f"{social_links}\n"
+        f"💊 **[Pump]({pumpfun_link})**\n\n"
+        f"📈 **Bonding Progress:** `{progress:.2f}%`\n"
+    )
 
+    field_value = (
+        f"💎 **FDV:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
+        f"👥 **Hldrs:** `{holder_count}` 💬 **Rp**: `{reply_count}`\n"
+        f"🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
+        f"**Dex paid?:** {'✅' if dex_paid else '❌'} ∙ **Dev Sold?:** {dev_sold}\n"
+        f"---\n"
+        f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']} / {percentage_change}{trend_indicator}`\n"
+        f"📊 **1m-Vol:** `${volume_1m}`\n"
+        f"{wallet_info}\n"
+    )
+
+    quick_buy = (
+        f"**[Photon]({photon_link})** ∙"
+        f"**[Bull]({bullx_link})** ∙"
+        f"**[PepeB]({pepeboost_link})** ∙"
+        f"**[Troj]({trojan_link})**"
+    )
+    
     wallet_info = (
         f"👝 **Wallets:**\n"
         f"🦈 **Whales:** `{wallet_counts['whale_wallets']}` 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
         f"🐀 **Rats:** `{wallet_counts['rat_trader_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
     ) if wallet_counts else ""
-
-    field_value = (
-        f"{social_links}\n"
-        f"💊 **[Pump]({pumpfun_link})**\n\n"
-        f"💎 **FDV:** `${market_cap}` 🕰️ **Made:** `{created_time_since}`\n"
-        f"👥 **Holders:** `{holder_count}` 💬 **Rp**: `{reply_count}`\n"
-        f"🏆 **Top 10**: `{top_10_holder_rate:.2f}%`\n"
-        f"💸 **Dex paid?:** {'✅' if dex_paid else '❌'}\n"
-        f"🛠️ **Dev Sold?:** {dev_sold}\n"
-        f"📈 **Bonding Progress:** `{progress:.2f}%`\n"
-        f"---\n"
-        f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']} / {percentage_change}{trend_indicator}`\n"
-        f"📊 **1-Min Vol:** `${volume_1m}`\n"
-        f"{wallet_info}\n\n"
-        f"```{item['address']}```\n"
-        f"[Pepeboost]({pepeboost_link}) | [Trojan]({trojan_link})\n"
-        f"[Photon]({photon_link}) | [BullX]({bullx_link})\n"
-    )
-
+    
     if len(field_value) > 1024:
         logging.warning(f"Field value for {item['address']} exceeded 1024 characters. Truncating.")
         field_value = field_value[:1021] + "..."
-        
+    
     embed.add_field(
-        name=f"{item['name']} ({item['symbol']})",
+        name="Coin Information",
+        value=coin_info,
+        inline=False
+    )
+    
+    embed.add_field(
+        name="Details",
         value=field_value,
+        inline=False
+    )
+    embed.add_field(
+        name="Quick Buy",
+        value=quick_buy,
         inline=False
     )
 
     embed.set_footer(
-        text=f"Disclaimer: This is not financial advice. Always DYOR.\nDonations: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu",
+        text=f"Disclaimer: Not financial advice! DYOR!.\nDonations: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu",
     )
 
     return embed
 
-async def send_or_update_embed(channel, item, title, task_type):
+async def send_or_update_embed(channel, item, task_type):
     sent_messages_task = sent_messages[task_type]
     updated = item['address'] in sent_messages_task
     trend = ""
@@ -203,7 +222,7 @@ async def send_or_update_embed(channel, item, title, task_type):
             trend = "Dipping! 📉"
         seen_coins[(item['name'], item['symbol'])]['market_cap'] = current_mcap
 
-    embed = format_embed(item, title, task_type, updated, trend, percentage_change, trend_indicator)
+    embed = format_embed(item, updated, trend, percentage_change, trend_indicator)
     if not embed:
         return
     
@@ -285,12 +304,18 @@ async def send_coins(channel, task_type):
             valid_addresses = {item['address'] for item in data['data']['rank']}
             for item in data['data']['rank']:
                 coin_key = (item['name'], item['symbol'])
+                
+                # Check for duplicate tickers
+                if item['symbol'] in seen_tickers and seen_tickers[item['symbol']] != item['address']:
+                    item['symbol'] = f"{item['symbol']} (duplicate)"
+                
                 if coin_key not in seen_coins:
                     seen_coins[coin_key] = {
                         'address': item['address'],
                         'called_mcap': int(item['usd_market_cap']),
                         'market_cap': int(item['usd_market_cap'])
                     }
+                    seen_tickers[item['symbol']] = item['address']
                     coins_collection.update_one(
                         {'address': item['address']},
                         {'$set': {
@@ -303,7 +328,7 @@ async def send_coins(channel, task_type):
                     )
                 else:
                     seen_coins[coin_key]['market_cap'] = int(item['usd_market_cap'])
-                await send_or_update_embed(channel, item, f"🚀 {task_type.capitalize()} Coin", task_type)
+                await send_or_update_embed(channel, item, task_type)
             await delete_old_messages(channel, valid_addresses, task_type)
             sessions_collection.update_one(
                 {'channel_id': channel.id, 'task_type': task_type},
