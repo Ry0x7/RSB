@@ -295,7 +295,7 @@ async def send_coins(channel, task_type):
             'min_marketcap': '3800',
             'max_marketcap': '9000',
             'min_holder_count': '18',
-            'max_created': '10m'
+            'max_created': '30m'
         },
         "completing": {
             'limit': '50',
