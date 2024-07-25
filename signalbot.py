@@ -179,6 +179,10 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         f"**[Troj]({trojan_link})**"
     )
     
+    footer_text = (
+        f"Disclaimer: Not financial advice! DYOR!.\n"
+        f"Donations: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu"
+    )
 
     
     if len(field_value) > 1024:
@@ -188,22 +192,22 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     embed.add_field(
         name="Coin Information",
         value=coin_info,
-        inline=True
+        inline=False
     )
     
     embed.add_field(
         name="Details",
         value=field_value,
-        inline=True
+        inline=False
     )
     embed.add_field(
         name="Quick Buy",
         value=quick_buy,
-        inline=True
+        inline=False
     )
 
     embed.set_footer(
-        text=f"Disclaimer: Not financial advice! DYOR!.\nDonations: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu",
+        text=footer_text
     )
 
     return embed
