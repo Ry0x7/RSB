@@ -188,18 +188,18 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     embed.add_field(
         name="Coin Information",
         value=coin_info,
-        inline=False
+        inline=True
     )
     
     embed.add_field(
         name="Details",
         value=field_value,
-        inline=False
+        inline=True
     )
     embed.add_field(
         name="Quick Buy",
         value=quick_buy,
-        inline=False
+        inline=True
     )
 
     embed.set_footer(
