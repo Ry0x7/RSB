@@ -94,14 +94,14 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         return None
 
     embed_title = f"{item['name']} ({item['symbol']})"
+    trendcoin = ""
     if updated:
-        embed_title = f"{trend} {item['name']} ({item['symbol']})"
+        trendcoin = f"**{trend}**)"
 
     coin_key = (item['name'], item['symbol'])
 
-    address_coin = f"```{item['address']}```"
     embed = interactions.Embed(
-        title=address_coin,
+        title=trendcoin,
         color=0x00ff00
     )
     embed.set_author(
@@ -126,7 +126,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
     holder_count = item.get('holder_count', 'N/A')
     volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))  # Remove decimals and convert to int
-    if volume_1m < 1700:
+    if volume_1m < 2000:
         return None  # Skip coins with 1-minute volume below 100
     market_cap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 'N/A'
     progress = float(item.get('progress', 0.0) or 0.0) * 100
@@ -155,6 +155,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     ) if wallet_counts else ""
     
     coin_info = (
+        f"```{item['address']}```\n"
         f"{social_links}\n"
         f"💊 **[Pump]({pumpfun_link})**\n\n"
     )
@@ -191,7 +192,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     
     embed.add_field(
         name="Coin Data",
-        value=field_value,
+        value=coin_info + field_value,
         inline=False
     )
     
@@ -225,9 +226,9 @@ async def send_or_update_embed(channel, item, task_type):
         current_mcap = int(item['usd_market_cap'])
         percentage_change, trend_indicator = calculate_percentage_change(seen_coins[(item['name'], item['symbol'])]['called_mcap'], current_mcap)
         if current_mcap > previous_mcap:
-            trend = "Sending! 📈"
+            trend = "Blasting! 🚀"
         elif current_mcap < previous_mcap:
-            trend = "Dipping! 📉"
+            trend = "Dipping! 💥"
         seen_coins[(item['name'], item['symbol'])]['market_cap'] = current_mcap
 
     embed = format_embed(item, updated, trend, percentage_change, trend_indicator)
