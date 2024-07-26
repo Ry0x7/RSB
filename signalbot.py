@@ -7,6 +7,9 @@ import asyncio
 import dotenv
 import os
 import pymongo
+from requests_html import HTMLSession
+from PIL import Image
+from io import BytesIO
 
 dotenv.load_dotenv()
 
@@ -88,15 +91,29 @@ def fetch_wallet_counts(address):
         logging.error(f"No valid data returned for wallet counts of address {address}")
     return None
 
+def capture_chart(address):
+    session = HTMLSession()
+    try:
+        chart_url = f"https://gmgn.ai/sol/token/{address}?embled=1"
+        response = session.get(chart_url)
+        response.html.render(timeout=20)  # Adjust timeout as necessary
+        chart_element = response.html.find('#chart-container', first=True)  # Update with actual chart container ID
+        if chart_element:
+            screenshot = chart_element.screenshot()
+            return screenshot
+    except Exception as e:
+        logging.error(f"Error capturing chart: {e}")
+        return None
+
 def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator=""):
     top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
     if top_10_holder_rate >= 40:
         return None
 
-    embed_title = f"{item['name']} ({item['symbol']})"
+    embed_title = f"🪙 {item['name']} **(${item['symbol']})**"
     trendcoin = ""
     if updated:
-        trendcoin = f"**{trend}**)"
+        trendcoin = f"**{trend}**"
 
     coin_key = (item['name'], item['symbol'])
 
@@ -169,15 +186,15 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
 
     )
     other_info = (
-        f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']} / {percentage_change}{trend_indicator}`\n"
+        f"👁️ **Seen At:**` ${seen_coins[coin_key]['called_mcap']} / {percentage_change}{trend_indicator}`\n"
         f"📊 **1m-Vol:** `${volume_1m}`\n"
         f"{wallet_info}\n\n\n"
     )
 
     quick_buy = (
-        f"**[Photon]({photon_link})** ∙"
-        f"**[Bull]({bullx_link})** ∙"
-        f"**[PepeB]({pepeboost_link})** ∙"
+        f"**[Photon]({photon_link})** ∙ "
+        f"**[Bull]({bullx_link})** ∙ "
+        f"**[PepeB]({pepeboost_link})** ∙ "
         f"**[Troj]({trojan_link})**"
     )
     
@@ -212,8 +229,15 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         text=footer_text
     )
 
-    return embed
+    # Capture and add the chart screenshot to the embed
+    chart_screenshot = capture_chart(item['address'])
+    if chart_screenshot:
+        chart_image_path = f"charts/{item['address']}.png"
+        with open(chart_image_path, "wb") as file:
+            file.write(chart_screenshot)
+        embed.set_image(url=f"attachment://{chart_image_path}")
 
+    return embed
 
 async def send_or_update_embed(channel, item, task_type):
     sent_messages_task = sent_messages[task_type]
