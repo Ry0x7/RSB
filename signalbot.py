@@ -98,7 +98,7 @@ async def capture_chart(address):
         try:
             chart_url = f"https://gmgn.ai/sol/token/{address}?embled=1"
             await page.goto(chart_url)
-            await page.wait_for_selector('#chart-container')  # Update with actual chart container ID
+            await page.wait_for_selector('.chart-container.top-full-width-chart.active')  # Update with actual chart container class
             screenshot = await page.screenshot()
             await browser.close()
             return screenshot
