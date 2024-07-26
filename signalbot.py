@@ -102,7 +102,7 @@ async def format_embed(item, updated=False, trend="", percentage_change="", tren
     if top_10_holder_rate >= 40:
         return None
 
-    embed_title = f"🪙 {item['name']} **(${item['symbol']})**"
+    embed_title = f"🪙 {item['name']} (${item['symbol']})"
     trendcoin = ""
     if updated:
         trendcoin = f"**{trend}**"
