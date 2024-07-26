@@ -259,18 +259,18 @@ async def send_or_update_embed(channel, item, task_type):
                     await message.edit(embeds=[embed])
                 else:
                     del sent_messages_task[item['address']]
-                    screenshot_filename = f"screenshots/{item['address']}.png"
-                    message = await channel.send(embeds=[embed], files=[interactions.File(screenshot_filename)])
+                    message = await channel.send(embeds=[embed])
                     sent_messages_task[item['address']] = message.id
             except interactions.errors.NotFound:
                 del sent_messages_task[item['address']]
-                message = await channel.send(embeds=[embed], files=[interactions.File(screenshot_filename)])
+                message = await channel.send(embeds=[embed])
                 sent_messages_task[item['address']] = message.id
         else:
-            message = await channel.send(embeds=[embed], files=[interactions.File(screenshot_filename)])
+            message = await channel.send(embeds=[embed])
             sent_messages_task[item['address']] = message.id
     except Exception as e:
         logging.error(f"Error in send_or_update_embed: {e}")
+
 
 async def delete_old_messages(channel, valid_addresses, task_type):
     sent_messages_task = sent_messages[task_type]
@@ -295,7 +295,6 @@ async def send_coins(channel, task_type):
             'min_volume': '5000',
             'min_marketcap': '9000',
             'max_marketcap': '30000',
-            'filters[]': 'has_socials',
             'min_holder_count': '80',
         },
         "new": {
@@ -303,7 +302,6 @@ async def send_coins(channel, task_type):
             'orderby': 'created_timestamp',
             'direction': 'asc',
             'new_creation': 'true',
-            'filters[]': 'has_socials',
             'min_marketcap': '3800',
             'max_marketcap': '9000',
             'min_holder_count': '18',
@@ -317,7 +315,6 @@ async def send_coins(channel, task_type):
             'min_marketcap': '45000',
             'max_marketcap': '80000',
             'min_holder_count': '130',
-            'filters[]': 'has_socials',
             'min_volume': '5000',
         }
     }
