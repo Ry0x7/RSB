@@ -89,6 +89,9 @@ def fetch_wallet_counts(address):
     return None
 
 def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator=""):
+    if not item['address'].endswith('pump'):
+        return None
+    
     top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
     if top_10_holder_rate >= 40:
         return None
@@ -126,7 +129,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
     holder_count = item.get('holder_count', 'N/A')
     volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))  # Remove decimals and convert to int
-    if volume_1m < 2000:
+    if volume_1m < 1600:
         return None  # Skip coins with 1-minute volume below 100
     market_cap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 'N/A'
     progress = float(item.get('progress', 0.0) or 0.0) * 100
