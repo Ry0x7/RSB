@@ -7,7 +7,7 @@ import asyncio
 import dotenv
 import os
 import pymongo
-from requests_html import AsyncHTMLSession
+from playwright.async_api import async_playwright
 from PIL import Image
 from io import BytesIO
 
@@ -92,25 +92,27 @@ def fetch_wallet_counts(address):
     return None
 
 async def capture_chart(address):
-    session = AsyncHTMLSession()
-    try:
-        chart_url = f"https://gmgn.ai/sol/token/{address}?embled=1"
-        response = await session.get(chart_url)
-        await response.html.arender(timeout=20)  # Adjust timeout as necessary
-        chart_element = response.html.find('#chart-container', first=True)  # Update with actual chart container ID
-        if chart_element:
-            screenshot = await chart_element.screenshot()
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        try:
+            chart_url = f"https://gmgn.ai/sol/token/{address}?embled=1"
+            await page.goto(chart_url)
+            await page.wait_for_selector('#chart-container')  # Update with actual chart container ID
+            screenshot = await page.screenshot()
+            await browser.close()
             return screenshot
-    except Exception as e:
-        logging.error(f"Error capturing chart: {e}")
-        return None
+        except Exception as e:
+            logging.error(f"Error capturing chart: {e}")
+            await browser.close()
+            return None
 
 async def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator=""):
     top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
     if top_10_holder_rate >= 40:
         return None
 
-    embed_title = f"🪙 {item['name']} **(${item['symbol']})**"
+    embed_title = f"🪙 {item['name']} (${item['symbol']})"
     trendcoin = ""
     if updated:
         trendcoin = f"**{trend}**"

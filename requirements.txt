@@ -19,6 +19,7 @@ dnspython==2.6.1
 emoji==2.12.1
 fake-useragent==1.5.1
 frozenlist==1.4.1
+greenlet==3.0.3
 idna==3.7
 importlib_metadata==8.2.0
 lxml==5.2.2
@@ -26,6 +27,7 @@ lxml_html_clean==0.1.1
 multidict==6.0.5
 parse==1.20.2
 pillow==10.4.0
+playwright==1.45.1
 pyee==11.1.0
 pymongo==4.8.0
 pyppeteer==2.0.0
