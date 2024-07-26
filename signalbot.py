@@ -8,8 +8,6 @@ import dotenv
 import os
 import pymongo
 from playwright.async_api import async_playwright
-from PIL import Image
-from io import BytesIO
 
 dotenv.load_dotenv()
 
@@ -91,28 +89,20 @@ def fetch_wallet_counts(address):
         logging.error(f"No valid data returned for wallet counts of address {address}")
     return None
 
-async def capture_chart(address):
+async def take_screenshot(url, filename):
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         page = await browser.new_page()
-        try:
-            chart_url = f"https://gmgn.ai/sol/token/{address}?embled=1"
-            await page.goto(chart_url)
-            await page.wait_for_selector('#tv_chart_container')  # Update with actual chart container id
-            screenshot = await page.screenshot()
-            await browser.close()
-            return screenshot
-        except Exception as e:
-            logging.error(f"Error capturing chart: {e}")
-            await browser.close()
-            return None
+        await page.goto(url)
+        await page.screenshot(path=filename)
+        await browser.close()
 
 async def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator=""):
     top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
     if top_10_holder_rate >= 40:
         return None
 
-    embed_title = f"🪙 {item['name']} (${item['symbol']})"
+    embed_title = f"🪙 {item['name']} **(${item['symbol']})**"
     trendcoin = ""
     if updated:
         trendcoin = f"**{trend}**"
@@ -231,15 +221,14 @@ async def format_embed(item, updated=False, trend="", percentage_change="", tren
         text=footer_text
     )
 
-    # Capture and add the chart screenshot to the embed
-    chart_screenshot = await capture_chart(item['address'])
-    if chart_screenshot:
-        chart_image_path = f"charts/{item['address']}.png"
-        with open(chart_image_path, "wb") as file:
-            file.write(chart_screenshot)
-        embed.set_image(url=f"attachment://{chart_image_path}")
+    # Take screenshot and set it in the embed
+    screenshot_url = f"https://gmgn.ai/sol/token/{item['address']}?embled=1"
+    screenshot_filename = f"screenshots/{item['address']}.png"
+    await take_screenshot(screenshot_url, screenshot_filename)
+    embed.set_image(url=f"attachment://{screenshot_filename}")
 
     return embed
+
 
 async def send_or_update_embed(channel, item, task_type):
     sent_messages_task = sent_messages[task_type]
@@ -270,21 +259,18 @@ async def send_or_update_embed(channel, item, task_type):
                     await message.edit(embeds=[embed])
                 else:
                     del sent_messages_task[item['address']]
-                    message = await channel.send(embeds=[embed])
+                    screenshot_filename = f"screenshots/{item['address']}.png"
+                    message = await channel.send(embeds=[embed], files=[interactions.File(screenshot_filename)])
                     sent_messages_task[item['address']] = message.id
             except interactions.errors.NotFound:
                 del sent_messages_task[item['address']]
-                message = await channel.send(embeds=[embed])
+                message = await channel.send(embeds=[embed], files=[interactions.File(screenshot_filename)])
                 sent_messages_task[item['address']] = message.id
         else:
-            message = await channel.send(embeds=[embed])
+            message = await channel.send(embeds=[embed], files=[interactions.File(screenshot_filename)])
             sent_messages_task[item['address']] = message.id
     except Exception as e:
         logging.error(f"Error in send_or_update_embed: {e}")
-    finally:
-        chart_image_path = f"charts/{item['address']}.png"
-        if os.path.exists(chart_image_path):
-            os.remove(chart_image_path)
 
 async def delete_old_messages(channel, valid_addresses, task_type):
     sent_messages_task = sent_messages[task_type]
