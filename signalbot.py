@@ -7,7 +7,6 @@ import asyncio
 import dotenv
 import os
 import pymongo
-from playwright.async_api import async_playwright
 
 dotenv.load_dotenv()
 
@@ -89,20 +88,12 @@ def fetch_wallet_counts(address):
         logging.error(f"No valid data returned for wallet counts of address {address}")
     return None
 
-async def take_screenshot(url, filename):
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        page = await browser.new_page()
-        await page.goto(url)
-        await page.screenshot(path=filename)
-        await browser.close()
-
-async def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator=""):
+def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator=""):
     top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
     if top_10_holder_rate >= 40:
         return None
 
-    embed_title = f"🪙 {item['name']} (${item['symbol']})"
+    embed_title = f"🪙{item['name']} (${item['symbol']})"
     trendcoin = ""
     if updated:
         trendcoin = f"**{trend}**"
@@ -178,7 +169,7 @@ async def format_embed(item, updated=False, trend="", percentage_change="", tren
 
     )
     other_info = (
-        f"👁️ **Seen At:**` ${seen_coins[coin_key]['called_mcap']} / {percentage_change}{trend_indicator}`\n"
+        f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']} / {percentage_change}{trend_indicator}`\n"
         f"📊 **1m-Vol:** `${volume_1m}`\n"
         f"{wallet_info}\n\n\n"
     )
@@ -192,7 +183,7 @@ async def format_embed(item, updated=False, trend="", percentage_change="", tren
     
     footer_text = (
         f"Disclaimer: Not financial advice! DYOR!.\n"
-        f"Donations: 7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu"
+        f"Donations: `7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`"
     )
 
     if len(field_value) > 1024:
@@ -221,12 +212,6 @@ async def format_embed(item, updated=False, trend="", percentage_change="", tren
         text=footer_text
     )
 
-    # Take screenshot and set it in the embed
-    screenshot_url = f"https://gmgn.ai/sol/token/{item['address']}?embled=1"
-    screenshot_filename = f"screenshots/{item['address']}.png"
-    await take_screenshot(screenshot_url, screenshot_filename)
-    embed.set_image(url=f"attachment://{screenshot_filename}")
-
     return embed
 
 
@@ -246,7 +231,7 @@ async def send_or_update_embed(channel, item, task_type):
             trend = "Dipping! 💥"
         seen_coins[(item['name'], item['symbol'])]['market_cap'] = current_mcap
 
-    embed = await format_embed(item, updated, trend, percentage_change, trend_indicator)
+    embed = format_embed(item, updated, trend, percentage_change, trend_indicator)
     if not embed:
         return
     
@@ -271,7 +256,6 @@ async def send_or_update_embed(channel, item, task_type):
     except Exception as e:
         logging.error(f"Error in send_or_update_embed: {e}")
 
-
 async def delete_old_messages(channel, valid_addresses, task_type):
     sent_messages_task = sent_messages[task_type]
     for address, message_id in list(sent_messages_task.items()):
@@ -295,6 +279,7 @@ async def send_coins(channel, task_type):
             'min_volume': '5000',
             'min_marketcap': '9000',
             'max_marketcap': '30000',
+            'filters[]': 'has_socials',
             'min_holder_count': '80',
         },
         "new": {
@@ -302,6 +287,7 @@ async def send_coins(channel, task_type):
             'orderby': 'created_timestamp',
             'direction': 'asc',
             'new_creation': 'true',
+            'filters[]': 'has_socials',
             'min_marketcap': '3800',
             'max_marketcap': '9000',
             'min_holder_count': '18',
@@ -315,6 +301,7 @@ async def send_coins(channel, task_type):
             'min_marketcap': '45000',
             'max_marketcap': '80000',
             'min_holder_count': '130',
+            'filters[]': 'has_socials',
             'min_volume': '5000',
         }
     }
