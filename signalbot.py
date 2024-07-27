@@ -99,7 +99,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     embed_title = f"🪙{item['name']} (${item['symbol']})"
     trendcoin = ""
     if updated:
-        trendcoin = f"**{trend}**"
+        trendcoin = f"**{trend}** | `{percentage_change}{trend_indicator}`"
 
     coin_key = (item['name'], item['symbol'])
 
@@ -172,7 +172,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
 
     )
     other_info = (
-        f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']} / {percentage_change}{trend_indicator}`\n"
+        f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']}`\n"
         f"📊 **1m-Vol:** `${volume_1m}`\n"
         f"{wallet_info}\n\n\n"
     )
@@ -282,7 +282,6 @@ async def send_coins(channel, task_type):
             'min_volume': '5000',
             'min_marketcap': '9000',
             'max_marketcap': '30000',
-            'filters[]': 'has_socials',
             'min_holder_count': '80',
         },
         "new": {
@@ -290,10 +289,9 @@ async def send_coins(channel, task_type):
             'orderby': 'created_timestamp',
             'direction': 'asc',
             'new_creation': 'true',
-            'filters[]': 'has_socials',
             'min_marketcap': '3800',
             'max_marketcap': '9000',
-            'min_holder_count': '18',
+            'min_holder_count': '8',
             'max_created': '30m'
         },
         "completing": {
@@ -304,7 +302,6 @@ async def send_coins(channel, task_type):
             'min_marketcap': '45000',
             'max_marketcap': '80000',
             'min_holder_count': '130',
-            'filters[]': 'has_socials',
             'min_volume': '5000',
         }
     }
