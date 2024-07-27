@@ -278,8 +278,8 @@ async def send_coins(channel, task_type):
             'direction': 'desc',
             'soaring': 'true',
             'min_volume': '5000',
-            'min_marketcap': '9000',
-            'max_marketcap': '30000',
+            'min_marketcap': '12000',
+            'max_marketcap': '40000',
             'min_holder_count': '80',
         },
         "new": {
@@ -290,14 +290,14 @@ async def send_coins(channel, task_type):
             'min_marketcap': '3800',
             'max_marketcap': '9000',
             'min_holder_count': '8',
-            'max_created': '30m'
+            'max_created': '15m'
         },
         "completing": {
             'limit': '50',
             'orderby': 'usd_market_cap',
             'direction': 'desc',
             'pump': 'true',
-            'min_marketcap': '45000',
+            'min_marketcap': '50000',
             'max_marketcap': '80000',
             'min_holder_count': '130',
             'min_volume': '5000',
