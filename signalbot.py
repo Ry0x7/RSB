@@ -40,6 +40,9 @@ logging.basicConfig(level=logging.INFO)
 running_tasks = {"soaring": {}, "new": {}, "completing": {}}
 sent_messages = {"soaring": {}, "new": {}, "completing": {}}
 
+# Store the last volume check for each coin
+volume_check = {"soaring": {}, "new": {}, "completing": {}}
+
 def fetch_data(url):
     """Fetch data from the specified URL."""
     logging.info(f"Fetching data from URL: {url}")
@@ -210,6 +213,13 @@ async def send_or_update_embed(channel, item, task_type):
         else:
             message = await channel.send(embeds=[embed])
             sent_messages_task[item['address']] = message.id
+        
+        # Update volume check
+        volume_check[task_type][item['address']] = {
+            "last_volume": int(item['volume_1m']),
+            "timestamp": datetime.utcnow()
+        }
+
     except Exception as e:
         logging.error(f"Error in send_or_update_embed: {e}")
 
@@ -320,12 +330,55 @@ def fetch_current_market_cap(address):
         logging.error(f"No valid data returned for address {address}")
     return None
 
+async def check_volume_movement():
+    """Check if the volume is moving for each coin."""
+    while True:
+        for task_type, addresses in volume_check.items():
+            for address, data in list(addresses.items()):
+                if datetime.utcnow() - data['timestamp'] >= timedelta(minutes=2):
+                    current_volume = fetch_current_volume(address)
+                    if current_volume == data['last_volume']:
+                        logging.info(f"Removing {address} from {task_type} due to no volume movement.")
+                        channel_id = [k for k, v in sent_messages[task_type].items() if v == address]
+                        if channel_id:
+                            channel_id = channel_id[0]
+                            channel = await bot.fetch_channel(channel_id)
+                            await delete_message(channel, address, task_type)
+                    else:
+                        volume_check[task_type][address]['last_volume'] = current_volume
+                        volume_check[task_type][address]['timestamp'] = datetime.utcnow()
+        await asyncio.sleep(120)
+
+def fetch_current_volume(address):
+    """Fetch the current volume for the given address."""
+    url = f"{SEARCH_API_BASE_URL}{address}"
+    data = fetch_data(url)
+    if data and 'data' in data and len(data['data']) > 0:
+        return int(data['data'][0]['volume_1m'])
+    else:
+        logging.error(f"No valid data returned for address {address}")
+    return None
+
+async def delete_message(channel, address, task_type):
+    """Delete a specific message from the channel."""
+    try:
+        message_id = sent_messages[task_type][address]
+        message = await channel.fetch_message(message_id)
+        if message:
+            await message.delete()
+        del sent_messages[task_type][address]
+        del volume_check[task_type][address]
+    except interactions.errors.NotFound:
+        del sent_messages[task_type][address]
+        del volume_check[task_type][address]
+
 @bot.event
 async def on_ready():
     """Event handler for when the bot is ready."""
     logging.info(f'Bot logged in as {bot.me.name}')
     await resume_sessions()
     asyncio.create_task(monitor_tasks())
+    asyncio.create_task(check_volume_movement())
 
 async def resume_sessions():
     """Resume active sessions from the database."""
