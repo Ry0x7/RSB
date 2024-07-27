@@ -122,12 +122,15 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     pepeboost_link = f"https://t.me/pepeboost_sol04_bot?start={item['address']}"
     trojan_link = f"https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']}"
     pumpfun_link = f"https://pump.fun/{item['address']}"
+    
     dex_paid = item.get('dexscr_update_link', 0) == 1 or item.get('dexscr_ad', 0) == 1
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
+    
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
+    
     holder_count = item.get('holder_count', 'N/A')
     volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))  # Remove decimals and convert to int
-    if volume_1m < 1600:
+    if volume_1m < 2000:
         return None  # Skip coins with 1-minute volume below 100
     market_cap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 'N/A'
     progress = float(item.get('progress', 0.0) or 0.0) * 100
@@ -136,7 +139,6 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     twitter = item.get('twitter', '')
     website = item.get('website', '')
     telegram = item.get('telegram', '')
-
     twitter_link = f"**[X](https://x.com/{twitter})**" if twitter else ""
     website_link = f"**[Web]({website if website.startswith('http') else 'https://' + website})**" if website else ""
     telegram_link = f"**[TG]({telegram if telegram.startswith('http') else 'https://' + telegram})**" if telegram else ""
@@ -166,13 +168,14 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         f"📈 **Progress:** `{progress:.2f}%` \n🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
         f"👥 **Hldrs:** `{holder_count}` 💬 **Rp**: `{reply_count}`\n"
         f"**Dex paid?:** {'✅' if dex_paid else '❌'} ∙ **Dev Sold?:** {dev_sold}\n"
-        f"---\n"
+        f"\n_____\n\n"
 
     )
     other_info = (
         f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']}`\n"
         f"📊 **1m-Vol:** `${volume_1m}`\n"
-        f"{wallet_info}\n\n\n"
+        f"{wallet_info}\n"
+        f"\n\n\n"
     )
 
     quick_buy = (
@@ -182,10 +185,6 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         f"**[Troj]({trojan_link})**"
     )
     
-    footer_text = (
-        f"Disclaimer: Not financial advice! DYOR!.\n"
-        f"Donations: `7w36xSwuJg4gLGPWje6iEyt9EY4vpgpYaew1BJgmn7bu`"
-    )
 
     if len(field_value) > 1024:
         logging.warning(f"Field value for {item['address']} exceeded 1024 characters. Truncating.")
@@ -200,7 +199,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     embed.add_field(
         name="Rug Check",
         value=other_info,
-        inline=True
+        inline=False
     )
     
     embed.add_field(
@@ -209,8 +208,9 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         inline=False
     )
 
+    timenow = datetime.utcnow().strftime("%Y-%m-%d %I:%M:%S %p")
     embed.set_footer(
-        text=footer_text
+        text="Rodent Trader ∙ DYOR ∙ Last called: " + timenow
     )
 
     return embed
@@ -315,6 +315,7 @@ async def send_coins(channel, task_type):
                 # Check for duplicate tickers
                 if item['symbol'] in seen_tickers and seen_tickers[item['symbol']] != item['address']:
                     item['symbol'] = f"{item['symbol']} (duplicate)"
+                    
                 
                 if coin_key not in seen_coins:
                     seen_coins[coin_key] = {
