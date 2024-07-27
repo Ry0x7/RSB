@@ -10,42 +10,38 @@ import pymongo
 
 dotenv.load_dotenv()
 
+# Initialize the Discord bot
 bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
 
+# Define API URLs
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
 SEARCH_API_BASE_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/sol/search?q='
 WALLET_COUNT_API_BASE_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/tag_wallet_count/sol/'
 
+# Connect to MongoDB
 MONGO_URI = os.getenv('MONGO_URI')
 mongo_client = pymongo.MongoClient(MONGO_URI)
 db = mongo_client['crypto_bot']
 coins_collection = db['coins']
 sessions_collection = db['sessions']
 
-last_data = {
-    "soaring": None,
-    "new": None,
-    "completing": None
-}
-owner_username = "chakazzz"
-
-logging.basicConfig(level=logging.INFO)
-
-running_tasks = {
-    "soaring": {},
-    "new": {},
-    "completing": {}
-}
-sent_messages = {
-    "soaring": {},
-    "new": {},
-    "completing": {}
-}
-
+# Store last data and seen coins/tickers
+last_data = {"soaring": None, "new": None, "completing": None}
 seen_coins = {}
 seen_tickers = {}
 
+# Set owner username for admin commands
+owner_username = "chakazzz"
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
+# Store running tasks and sent messages
+running_tasks = {"soaring": {}, "new": {}, "completing": {}}
+sent_messages = {"soaring": {}, "new": {}, "completing": {}}
+
 def fetch_data(url):
+    """Fetch data from the specified URL."""
     logging.info(f"Fetching data from URL: {url}")
     try:
         response = requests.get(url)
@@ -59,6 +55,7 @@ def fetch_data(url):
     return None
 
 def get_time_since_creation(created_timestamp):
+    """Calculate the time since the coin was created."""
     created_time = datetime.utcfromtimestamp(created_timestamp)
     now = datetime.utcnow()
     time_diff = now - created_time
@@ -73,6 +70,7 @@ def get_time_since_creation(created_timestamp):
         return f"{time_diff.days}d"
 
 def calculate_percentage_change(original, current):
+    """Calculate the percentage change between the original and current values."""
     if original == 0:
         return "N/A", ""
     change = ((current - original) / original) * 100
@@ -80,6 +78,7 @@ def calculate_percentage_change(original, current):
     return f"{change:.2f}%", trend_indicator
 
 def fetch_wallet_counts(address):
+    """Fetch wallet counts for the specified address."""
     url = f"{WALLET_COUNT_API_BASE_URL}{address}"
     data = fetch_data(url)
     if data and data['code'] == 0:
@@ -89,53 +88,39 @@ def fetch_wallet_counts(address):
     return None
 
 def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator=""):
-    
+    """Format the embed message for the coin."""
     top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
     if top_10_holder_rate >= 40:
         return None
 
-    embed_title = f"🪙{item['name']} (${item['symbol']})"
-    trendcoin = ""
-    if updated:
-        trendcoin = f"**{trend}** | `{percentage_change}{trend_indicator}`"
+    embed_title = f"🪙 {item['name']} (${item['symbol']})"
+    trendcoin = f"**{trend}** | `{percentage_change}{trend_indicator}`" if updated else ""
 
-    coin_key = (item['name'], item['symbol'])
+    embed = interactions.Embed(title=trendcoin, color=0x00ff00)
+    embed.set_author(name=embed_title)
 
-    embed = interactions.Embed(
-        title=trendcoin,
-        color=0x00ff00
-    )
-    embed.set_author(
-        name=embed_title
-    )
-
+    logo_url = item['logo']
     if 'ipfs/' in item['logo']:
         ipfs_hash = item['logo'].split('ipfs/')[-1]
         logo_url = f"https://pump.mypinata.cloud/ipfs/{ipfs_hash}"
-    else:
-        logo_url = item['logo']
-        
     embed.set_thumbnail(url=logo_url)
 
-    photon_link = f"https://photon-sol.tinyastro.io/en/r/@rodent0x/{item['address']}"
-    bullx_link = f"https://bullx.io/terminal?chainId=1399811149&address={item['address']}"
-    pepeboost_link = f"https://t.me/pepeboost_sol04_bot?start={item['address']}"
-    trojan_link = f"https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']}"
-    pumpfun_link = f"https://pump.fun/{item['address']}"
-    
-    dex_paid = item.get('dexscr_update_link', 0) == 1 or item.get('dexscr_ad', 0) == 1
-    dev_sold = "✅" if item.get('creator_close', False) else "❌"
-    
-    created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
-    
-    holder_count = item.get('holder_count', 'N/A')
-    volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))  # Remove decimals and convert to int
-    if volume_1m < 2000:
-        return None  # Skip coins with 1-minute volume below 100
-    market_cap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 'N/A'
-    progress = float(item.get('progress', 0.0) or 0.0) * 100
-    reply_count = item.get('reply_count', 'N/A')
+    social_links = get_social_links(item)
+    wallet_counts = fetch_wallet_counts(item['address'])
 
+    if wallet_counts and wallet_counts['sniper_wallets'] > 5:
+        logging.info(f"Token {item['address']} has more than 5 sniper wallets. Skipping.")
+        return None
+
+    embed_fields = generate_embed_fields(item, wallet_counts, social_links)
+    for field_name, field_value in embed_fields.items():
+        embed.add_field(name=field_name, value=field_value, inline=False)
+
+    embed.set_footer(text="Rodent Trader ∙ DYOR ∙ Last called: " + datetime.utcnow().strftime("%I:%M:%S %p"))
+    return embed
+
+def get_social_links(item):
+    """Generate social media links for the embed."""
     twitter = item.get('twitter', '')
     website = item.get('website', '')
     telegram = item.get('telegram', '')
@@ -143,105 +128,76 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     website_link = f"**[Web]({website if website.startswith('http') else 'https://' + website})**" if website else ""
     telegram_link = f"**[TG]({telegram if telegram.startswith('http') else 'https://' + telegram})**" if telegram else ""
 
-    social_links = " **∙** ".join(filter(None, [telegram_link, twitter_link, website_link]))
-    if social_links:
-        social_links = f"{social_links}"
+    return " **∙** ".join(filter(None, [telegram_link, twitter_link, website_link]))
 
-    wallet_counts = fetch_wallet_counts(item['address'])
-    if wallet_counts and wallet_counts['sniper_wallets'] > 5:
-        logging.info(f"Token {item['address']} has more than 5 sniper wallets. Skipping.")
-        return None  # Skip this token
-
+def generate_embed_fields(item, wallet_counts, social_links):
+    """Generate the fields for the embed."""
+    coin_info = f"```{item['address']}```\n{social_links}\n💊 **[Pump](https://pump.fun/{item['address']})**\n\n"
+    market_cap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 'N/A'
+    created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
+    top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
+    progress = float(item.get('progress', 0.0) or 0.0) * 100
+    holder_count = item.get('holder_count', 'N/A')
+    volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))
+    reply_count = item.get('reply_count', 'N/A')
+    dex_paid = item.get('dexscr_update_link', 0) == 1 or item.get('dexscr_ad', 0) == 1
+    dev_sold = "✅" if item.get('creator_close', False) else "❌"
+    
     wallet_info = (
         f"🦈 **Whales:** `{wallet_counts['whale_wallets']}` 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
         f"🐀 **Rats:** `{wallet_counts['rat_trader_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
     ) if wallet_counts else ""
     
-    coin_info = (
-        f"```{item['address']}```\n"
-        f"{social_links}\n"
-        f"💊 **[Pump]({pumpfun_link})**\n\n"
-    )
-
     field_value = (
         f"💎 **FDV:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
         f"📈 **Progress:** `{progress:.2f}%` \n🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
-        f"👥 **Hldrs:** `{holder_count}` 💬 **Rp**: `{reply_count}`\n"
+        f"👥 **Holders:** `{holder_count}` 💬 **Rp**: `{reply_count}`\n"
         f"**Dex paid?:** {'✅' if dex_paid else '❌'} ∙ **Dev Sold?:** {dev_sold}\n"
-        f"\n_____\n\n"
-
-    )
-    other_info = (
-        f"👁️ **Seen At:**`${seen_coins[coin_key]['called_mcap']}`\n"
-        f"📊 **1m-Vol:** `${volume_1m}`\n"
-        f"{wallet_info}\n"
         f"\n\n\n"
+    )
+    
+    other_info = (
+        f"👁️ **Seen At:**`${seen_coins[(item['name'], item['symbol'])]['called_mcap']}`\n"
+        f"📊 **1m-Vol:** `${volume_1m}`\n"
+        f"{wallet_info}"
     )
 
     quick_buy = (
-        f"**[Photon]({photon_link})** ∙ "
-        f"**[Bull]({bullx_link})** ∙ "
-        f"**[PepeB]({pepeboost_link})** ∙ "
-        f"**[Troj]({trojan_link})**"
-    )
-    
-
-    if len(field_value) > 1024:
-        logging.warning(f"Field value for {item['address']} exceeded 1024 characters. Truncating.")
-        field_value = field_value[:1021] + "..."
-    
-    embed.add_field(
-        name="Coin Data",
-        value=coin_info + field_value,
-        inline=False
-    )
-    
-    embed.add_field(
-        name="Rug Check",
-        value=other_info,
-        inline=False
-    )
-    
-    embed.add_field(
-        name="Quick Buy",
-        value=quick_buy,
-        inline=False
+        f"**[Photon](https://photon-sol.tinyastro.io/en/r/@rodent0x/{item['address']})** ∙ "
+        f"**[Bull](https://bullx.io/terminal?chainId=1399811149&address={item['address']})** ∙ "
+        f"**[PepeB](https://t.me/pepeboost_sol04_bot?start={item['address']})** ∙ "
+        f"**[Troj](https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']})**"
     )
 
-    timenow = datetime.utcnow().strftime("%Y-%m-%d %I:%M:%S %p")
-    embed.set_footer(
-        text="Rodent Trader ∙ DYOR ∙ Last called: " + timenow
-    )
-
-    return embed
-
+    return {
+        "Coin Data": coin_info + field_value,
+        "Rug Check": other_info,
+        "Quick Buy": quick_buy
+    }
 
 async def send_or_update_embed(channel, item, task_type):
+    """Send or update the embed message for the coin."""
     sent_messages_task = sent_messages[task_type]
     updated = item['address'] in sent_messages_task
-    trend = ""
-    percentage_change = ""
-    trend_indicator = ""
+    trend, percentage_change, trend_indicator = "", "", ""
+    
     if updated:
         previous_mcap = seen_coins[(item['name'], item['symbol'])]['called_mcap']
         current_mcap = int(item['usd_market_cap'])
-        percentage_change, trend_indicator = calculate_percentage_change(seen_coins[(item['name'], item['symbol'])]['called_mcap'], current_mcap)
-        if current_mcap > previous_mcap:
-            trend = "Blasting! 🚀"
-        elif current_mcap < previous_mcap:
-            trend = "Dipping! 💥"
+        percentage_change, trend_indicator = calculate_percentage_change(previous_mcap, current_mcap)
+        trend = "Blasting! 🚀" if current_mcap > previous_mcap else "Dipping! 💥" if current_mcap < previous_mcap else ""
         seen_coins[(item['name'], item['symbol'])]['market_cap'] = current_mcap
 
     embed = format_embed(item, updated, trend, percentage_change, trend_indicator)
     if not embed:
         return
-    
+
     try:
         if updated:
             message_id = sent_messages_task[item['address']]
             try:
                 message = await channel.fetch_message(message_id)
-                if message is not None:
+                if message:
                     await message.edit(embeds=[embed])
                 else:
                     del sent_messages_task[item['address']]
@@ -258,6 +214,7 @@ async def send_or_update_embed(channel, item, task_type):
         logging.error(f"Error in send_or_update_embed: {e}")
 
 async def delete_old_messages(channel, valid_addresses, task_type):
+    """Delete old messages that are no longer valid."""
     sent_messages_task = sent_messages[task_type]
     for address, message_id in list(sent_messages_task.items()):
         if address not in valid_addresses:
@@ -270,6 +227,7 @@ async def delete_old_messages(channel, valid_addresses, task_type):
                 del sent_messages_task[address]
 
 async def send_coins(channel, task_type):
+    """Send coins information to the channel."""
     global last_data
     params = {
         "soaring": {
@@ -316,7 +274,6 @@ async def send_coins(channel, task_type):
                 if item['symbol'] in seen_tickers and seen_tickers[item['symbol']] != item['address']:
                     item['symbol'] = f"{item['symbol']} (duplicate)"
                     
-                
                 if coin_key not in seen_coins:
                     seen_coins[coin_key] = {
                         'address': item['address'],
@@ -347,12 +304,14 @@ async def send_coins(channel, task_type):
         logging.error(f"Error in send_coins: {e}")
 
 def build_query_url(base_url, params):
+    """Build query URL from the base URL and parameters."""
     query_url = f"{base_url}?"
     for key, value in params.items():
         query_url += f"{key}={value}&"
     return query_url.strip('&')
 
 def fetch_current_market_cap(address):
+    """Fetch the current market cap for the given address."""
     url = f"{SEARCH_API_BASE_URL}{address}"
     data = fetch_data(url)
     if data and 'data' in data and len(data['data']) > 0:
@@ -363,11 +322,13 @@ def fetch_current_market_cap(address):
 
 @bot.event
 async def on_ready():
+    """Event handler for when the bot is ready."""
     logging.info(f'Bot logged in as {bot.me.name}')
     await resume_sessions()
     asyncio.create_task(monitor_tasks())
 
 async def resume_sessions():
+    """Resume active sessions from the database."""
     active_sessions = sessions_collection.find({})
     for session in active_sessions:
         channel = await bot.fetch_channel(session['channel_id'])
@@ -376,11 +337,13 @@ async def resume_sessions():
         running_tasks[task_type][channel.id] = await aiojobs.create_scheduler().spawn(loop_send_coins(channel, task_type, valid_addresses))
 
 async def admin_command(ctx):
+    """Check if the user has admin permissions."""
     guild = await bot.fetch_guild(ctx.guild_id)
     member = await guild.fetch_member(ctx.author.id)
     return ctx.author.username == owner_username or member.permissions.has(interactions.Permissions.MANAGE_GUILD | interactions.Permissions.MANAGE_CHANNELS)
 
 async def start_task(ctx, task_type):
+    """Start a task to send coin information."""
     if not await admin_command(ctx):
         await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
         return
@@ -502,6 +465,7 @@ async def leaderboard(ctx):
         logging.error(f"Error in leaderboard command: {e}")
 
 async def loop_send_coins(channel, task_type, valid_addresses=None):
+    """Loop to continuously send coin information."""
     while True:
         try:
             await send_coins(channel, task_type)
@@ -510,6 +474,7 @@ async def loop_send_coins(channel, task_type, valid_addresses=None):
         await asyncio.sleep(3)
 
 async def monitor_tasks():
+    """Monitor tasks to ensure they are running."""
     while True:
         for task_type in ["soaring", "new", "completing"]:
             for channel_id, task in list(running_tasks[task_type].items()):
