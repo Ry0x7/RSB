@@ -279,16 +279,18 @@ async def send_coins(channel, task_type):
             valid_addresses = {item['address'] for item in data['data']['rank']}
             for item in data['data']['rank']:
                 coin_key = (item['name'], item['symbol'])
-
-                # Check if volume is within the desired range
-                volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))
-                if volume_1m < 1000 or volume_1m > 2000:
-                    continue
-
+                
                 # Check for duplicate tickers
                 if item['symbol'] in seen_tickers and seen_tickers[item['symbol']] != item['address']:
-                    item['symbol'] = f"{item['symbol']} (duplicate)"
-
+                    logging.info(f"Skipping duplicate ticker: {item['symbol']}")
+                    continue
+                
+                # Check for 1-minute volume below 1000
+                volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))
+                if volume_1m < 1000:
+                    logging.info(f"Skipping coin {item['name']} due to low 1-minute volume: {volume_1m}")
+                    continue
+                
                 if coin_key not in seen_coins:
                     seen_coins[coin_key] = {
                         'address': item['address'],
