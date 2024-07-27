@@ -89,8 +89,6 @@ def fetch_wallet_counts(address):
     return None
 
 def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator=""):
-    if not item['address'].endswith('pump'):
-        return None
     
     top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
     if top_10_holder_rate >= 40:
@@ -164,8 +162,8 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     )
 
     field_value = (
-        f"📈 **Progress:** `{progress:.2f}%` \n🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
         f"💎 **FDV:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
+        f"📈 **Progress:** `{progress:.2f}%` \n🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
         f"👥 **Hldrs:** `{holder_count}` 💬 **Rp**: `{reply_count}`\n"
         f"**Dex paid?:** {'✅' if dex_paid else '❌'} ∙ **Dev Sold?:** {dev_sold}\n"
         f"---\n"
