@@ -158,7 +158,7 @@ def generate_embed_fields(item, wallet_counts, social_links):
     rat_trader_amount_rate = float(item.get('rat_trader_amount_rate', 0.0)) * 100
 
     # New fields for creator balance and burn amount
-    creator_balance = (float(item.get('creator_balance', 0.0)))
+    creator_balance = "{:.2f}".format(float(item.get('creator_balance', 0.0)))
 
     wallet_info = (
         f"🦈 **Whales:** `{wallet_counts['whale_wallets']}` 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
