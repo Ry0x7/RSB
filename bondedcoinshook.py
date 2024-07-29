@@ -97,8 +97,8 @@ while True:
         description = (
             f"```{token_info['address']}```\n"
             f"**📈 Market Cap:** `${token_info['market_cap']:,.2f}`\n"
-            f"**👀 Seen at: `{seen_at_str} / {percentage_change_str}`\n"
-            f"**💧 Liquidity:** `${pair['liquidity']}` \n"
+            f"**👀 Seen at: `({seen_at_str} ) / {percentage_change_str}`\n"
+            f"**💧 Liquidity:** `${pair['liquidity']:,.2f}` \n"
             f"**🔄 Volume (24h):** `${token_info['volume_24h']:,.2f}`\n"
             f"**👥 Holders:** `{token_info['holder_count']}` Top Holder Rate:** ``{top_holder_rate:.2%}``\n"
             f"**🧑‍💻 Dev Balance Rate:** {token_info['creator_balance_rate']:.2%} \n"
