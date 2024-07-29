@@ -145,7 +145,9 @@ def generate_embed_fields(item, wallet_counts, social_links):
     reply_count = item.get('reply_count', 'N/A')
     dex_paid = item.get('dexscr_update_link', 0) == 1 or item.get('dexscr_ad', 0) == 1
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
-    
+    cto_flag = "✅" if item.get('cto_flag', 0) == 1 else "❌"
+    rat_trader_amount_rate = float(item.get('rat_trader_amount_rate', 0.0)) * 100
+
     wallet_info = (
         f"🦈 **Whales:** `{wallet_counts['whale_wallets']}` 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
         f"🐀 **Rats:** `{wallet_counts['rat_trader_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
@@ -156,6 +158,7 @@ def generate_embed_fields(item, wallet_counts, social_links):
         f"📈 **Progress:** `{progress:.2f}%` \n🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
         f"👥 **Holders:** `{holder_count}` 💬 **Rp**: `{reply_count}`\n"
         f"**Dex paid?:** {'✅' if dex_paid else '❌'} ∙ **Dev Sold?:** {dev_sold}\n"
+        f"**CTO Flag?:** {cto_flag} ∙ **Rat Trader Rate:** `{rat_trader_amount_rate:.2f}%`\n"  # New fields added
         f"\n\n\n"
     )
     
@@ -249,7 +252,7 @@ async def send_coins(channel, task_type):
             'min_marketcap': '12000',
             'max_marketcap': '40000',
             'min_holder_count': '50',
-            'max_created': '5h'
+            'max_created': '5h',
         },
         "new": {
             'limit': '50',
@@ -266,11 +269,9 @@ async def send_coins(channel, task_type):
             'orderby': 'usd_market_cap',
             'direction': 'desc',
             'pump': 'true',
-            'min_marketcap': '50000',
-            'max_marketcap': '100000',
+            'min_progress': '0.7',
             'min_holder_count': '130',
-            'min_volume': '5000',
-            'max_created': '5h'
+            'max_created': '5h',
         }
     }
     try:
