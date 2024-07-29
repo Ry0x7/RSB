@@ -90,6 +90,15 @@ def fetch_wallet_counts(address):
         logging.error(f"No valid data returned for wallet counts of address {address}")
     return None
 
+def format_large_number(value):
+    """Format large numbers into shorthand notation."""
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.1f}M"
+    elif value >= 1_000:
+        return f"{value / 1_000:.1f}k"
+    return str(value)
+
+
 def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator=""):
     """Format the embed message for the coin."""
     top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
@@ -148,6 +157,10 @@ def generate_embed_fields(item, wallet_counts, social_links):
     cto_flag = "✅" if item.get('cto_flag', 0) == 1 else "❌"
     rat_trader_amount_rate = float(item.get('rat_trader_amount_rate', 0.0)) * 100
 
+    # New fields for creator balance and burn amount
+    creator_token_balance = format_large_number(float(item.get('creator_token_balance', 0.0)))
+    dev_token_burn_ratio = float(item.get('dev_token_burn_ratio', 0.0)) * 100
+
     wallet_info = (
         f"🦈 **Whales:** `{wallet_counts['whale_wallets']}` 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
         f"🐀 **Rats:** `{wallet_counts['rat_trader_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
@@ -158,7 +171,8 @@ def generate_embed_fields(item, wallet_counts, social_links):
         f"📈 **Progress:** `{progress:.2f}%` \n🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
         f"👥 **Holders:** `{holder_count}` 💬 **Rp**: `{reply_count}`\n"
         f"**Dex paid?:** {'✅' if dex_paid else '❌'} ∙ **Dev Sold?:** {dev_sold}\n"
-        f"**CTO Flag?:** {cto_flag} ∙ **Rat Trader Rate:** `{rat_trader_amount_rate:.2f}%`\n"  # New fields added
+        f"**CTO Flag?:** {cto_flag} ∙ **Rat Trader:** `{rat_trader_amount_rate:.2f}%`\n"
+        f"**Dev Bal:** `{creator_token_balance}` ∙ **Burned Supply: ** `{dev_token_burn_ratio:.2f}%`\n"  # New fields added
         f"\n\n\n"
     )
     
@@ -180,6 +194,7 @@ def generate_embed_fields(item, wallet_counts, social_links):
         "Rug Check": other_info,
         "Quick Buy": quick_buy
     }
+
 
 async def send_or_update_embed(channel, item, task_type):
     """Send or update the embed message for the coin."""
@@ -244,18 +259,18 @@ async def send_coins(channel, task_type):
     global last_data
     params = {
         "soaring": {
-            'limit': '50',
+            'limit': '100',
             'orderby': 'usd_market_cap',
             'direction': 'desc',
             'soaring': 'true',
             'min_volume': '5000',
             'min_marketcap': '12000',
-            'max_marketcap': '40000',
-            'min_holder_count': '50',
+            'max_marketcap': '50000',
+            'min_holder_count': '70',
             'max_created': '5h',
         },
         "new": {
-            'limit': '50',
+            'limit': '100',
             'orderby': 'created_timestamp',
             'direction': 'asc',
             'new_creation': 'true',
@@ -265,12 +280,12 @@ async def send_coins(channel, task_type):
             'max_created': '15m',
         },
         "completing": {
-            'limit': '50',
+            'limit': '100',
             'orderby': 'usd_market_cap',
             'direction': 'desc',
             'pump': 'true',
             'min_progress': '0.7',
-            'min_holder_count': '130',
+            'min_holder_count': '100',
             'max_created': '5h',
         }
     }
