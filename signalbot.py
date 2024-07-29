@@ -158,7 +158,7 @@ def generate_embed_fields(item, wallet_counts, social_links):
     rat_trader_amount_rate = float(item.get('rat_trader_amount_rate', 0.0)) * 100
 
     # New fields for creator balance and burn amount
-    creator_balance = int(float(item.get('creator_balance', 0.00) or 0.00))
+    creator_balance = int(float(item.get('creator_balance', 0.00)))
 
     wallet_info = (
         f"🦈 **Whales:** `{wallet_counts['whale_wallets']}` 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
@@ -182,6 +182,7 @@ def generate_embed_fields(item, wallet_counts, social_links):
     )
 
     quick_buy = (
+        f"**[GmGn](https://gmgn.ai/sol/token/Sef3AuWIF_{item['address']})** ∙ "
         f"**[Photon](https://photon-sol.tinyastro.io/en/r/@rodent0x/{item['address']})** ∙ "
         f"**[Bull](https://bullx.io/terminal?chainId=1399811149&address={item['address']})** ∙ "
         f"**[PepeB](https://t.me/pepeboost_sol04_bot?start={item['address']})** ∙ "
