@@ -145,10 +145,10 @@ def get_social_links(item):
 def generate_embed_fields(item, wallet_counts, social_links):
     """Generate the fields for the embed."""
     coin_info = f"```{item['address']}```\n{social_links}\n💊 **[Pump](https://pump.fun/{item['address']})**\n\n"
-    market_cap = int(item['usd_market_cap']) if item.get('usd_market_cap') else 'N/A'
+    market_cap = int(float(item['usd_market_cap'])) if item.get('usd_market_cap') else 'N/A'
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
     top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
-    progress = float(item.get('progress', 0.0) or 0.0) * 100
+    progress = float(item.get('progress', 0.0) or 0.0) * 80
     holder_count = item.get('holder_count', 'N/A')
     volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))
     reply_count = item.get('reply_count', 'N/A')
@@ -158,7 +158,7 @@ def generate_embed_fields(item, wallet_counts, social_links):
     rat_trader_amount_rate = float(item.get('rat_trader_amount_rate', 0.0)) * 100
 
     # New fields for creator balance and burn amount
-    creator_balance = round(float(item.get('creator_balance', 0.0)), 2)
+    creator_balance = int(float(item.get('creator_balance', 0.00) or 0.00))
 
     wallet_info = (
         f"🦈 **Whales:** `{wallet_counts['whale_wallets']}` 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
@@ -194,7 +194,6 @@ def generate_embed_fields(item, wallet_counts, social_links):
         "Quick Buy": quick_buy
     }
 
-
 async def send_or_update_embed(channel, item, task_type):
     """Send or update the embed message for the coin."""
     sent_messages_task = sent_messages[task_type]
@@ -203,7 +202,7 @@ async def send_or_update_embed(channel, item, task_type):
     
     if updated:
         previous_mcap = seen_coins[(item['name'], item['symbol'])]['called_mcap']
-        current_mcap = int(item['usd_market_cap'])
+        current_mcap = int(float(item['usd_market_cap']))
         percentage_change, trend_indicator = calculate_percentage_change(previous_mcap, current_mcap)
         trend = "Blasting! 🚀" if current_mcap > previous_mcap else "Dipping! 💥" if current_mcap < previous_mcap else ""
         seen_coins[(item['name'], item['symbol'])]['market_cap'] = current_mcap
@@ -233,7 +232,7 @@ async def send_or_update_embed(channel, item, task_type):
         
         # Update volume check
         volume_check[task_type][item['address']] = {
-            "last_volume": int(item['volume_1m']),
+            "last_volume": int(float(item['volume_1m'])),
             "timestamp": datetime.utcnow()
         }
 
@@ -311,8 +310,8 @@ async def send_coins(channel, task_type):
                 if coin_key not in seen_coins:
                     seen_coins[coin_key] = {
                         'address': item['address'],
-                        'called_mcap': int(item['usd_market_cap']),
-                        'market_cap': int(item['usd_market_cap'])
+                        'called_mcap': int(float(item['usd_market_cap'])),
+                        'market_cap': int(float(item['usd_market_cap']))
                     }
                     seen_tickers[item['symbol']] = item['address']
                     coins_collection.update_one(
@@ -320,13 +319,13 @@ async def send_coins(channel, task_type):
                         {'$set': {
                             'name': item['name'],
                             'symbol': item['symbol'],
-                            'called_mcap': int(item['usd_market_cap']),
+                            'called_mcap': int(float(item['usd_market_cap'])),
                             'called_at': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
                         }},
                         upsert=True
                     )
                 else:
-                    seen_coins[coin_key]['market_cap'] = int(item['usd_market_cap'])
+                    seen_coins[coin_key]['market_cap'] = int(float(item['usd_market_cap']))
                 await send_or_update_embed(channel, item, task_type)
             await delete_old_messages(channel, valid_addresses, task_type)
             sessions_collection.update_one(
@@ -349,7 +348,7 @@ def fetch_current_market_cap(address):
     url = f"{SEARCH_API_BASE_URL}{address}"
     data = fetch_data(url)
     if data and 'data' in data and len(data['data']) > 0:
-        return int(data['data'][0]['usd_market_cap'])
+        return int(float(data['data'][0]['usd_market_cap']))
     else:
         logging.error(f"No valid data returned for address {address}")
     return None
@@ -361,7 +360,7 @@ async def check_volume_movement():
             for address, data in list(addresses.items()):
                 if datetime.utcnow() - data['timestamp'] >= timedelta(minutes=2):
                     current_volume = fetch_current_volume(address)
-                    if current_volume == data['last_volume']:
+                    if int(float(current_volume)) == data['last_volume']:
                         logging.info(f"Removing {address} from {task_type} due to no volume movement.")
                         channel_id = [k for k, v in sent_messages[task_type].items() if v == address]
                         if channel_id:
@@ -369,7 +368,7 @@ async def check_volume_movement():
                             channel = await bot.fetch_channel(channel_id)
                             await delete_message(channel, address, task_type)
                     else:
-                        volume_check[task_type][address]['last_volume'] = current_volume
+                        volume_check[task_type][address]['last_volume'] = int(float(current_volume))
                         volume_check[task_type][address]['timestamp'] = datetime.utcnow()
         await asyncio.sleep(120)
 
@@ -378,7 +377,7 @@ def fetch_current_volume(address):
     url = f"{SEARCH_API_BASE_URL}{address}"
     data = fetch_data(url)
     if data and 'data' in data and len(data['data']) > 0:
-        return int(data['data'][0]['volume_1m'])
+        return int(float(data['data'][0]['volume_1m']))
     else:
         logging.error(f"No valid data returned for address {address}")
     return None
