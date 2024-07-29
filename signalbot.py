@@ -242,13 +242,14 @@ async def send_coins(channel, task_type):
     params = {
         "soaring": {
             'limit': '50',
-            'orderby': 'progress',
+            'orderby': 'usd_market_cap',
             'direction': 'desc',
             'soaring': 'true',
             'min_volume': '5000',
             'min_marketcap': '12000',
             'max_marketcap': '40000',
-            'min_holder_count': '80',
+            'min_holder_count': '50',
+            'max_created': '5h'
         },
         "new": {
             'limit': '50',
@@ -257,8 +258,8 @@ async def send_coins(channel, task_type):
             'new_creation': 'true',
             'min_marketcap': '3800',
             'max_marketcap': '9000',
-            'min_holder_count': '8',
-            'max_created': '15m'
+            'min_holder_count': '5',
+            'max_created': '15m',
         },
         "completing": {
             'limit': '50',
@@ -266,9 +267,10 @@ async def send_coins(channel, task_type):
             'direction': 'desc',
             'pump': 'true',
             'min_marketcap': '50000',
-            'max_marketcap': '80000',
+            'max_marketcap': '100000',
             'min_holder_count': '130',
             'min_volume': '5000',
+            'max_created': '5h'
         }
     }
     try:
