@@ -476,12 +476,25 @@ async def stop(ctx):
                 await running_tasks[task_type][ctx.channel.id].close()
                 del running_tasks[task_type][ctx.channel.id]
                 stopped_any = True
+                
+                # Delete all previous messages for this task type in this channel
+                for address, message_id in list(sent_messages[task_type].items()):
+                    try:
+                        message = await ctx.channel.fetch_message(message_id)
+                        if message.channel_id == ctx.channel.id:
+                            await message.delete()
+                            del sent_messages[task_type][address]
+                    except interactions.errors.NotFound:
+                        del sent_messages[task_type][address]
+                break  # Only stop one task type
+
         if stopped_any:
-            await ctx.send('Stopped sending token information. ❌', ephemeral=True)
+            await ctx.send(f'Stopped sending {task_type} token information and deleted all previous messages in this channel. ❌', ephemeral=True)
         else:
-            await ctx.send('No active tasks to stop. ❌', ephemeral=True)
+            await ctx.send('No active tasks to stop in this channel. ❌', ephemeral=True)
     except Exception as e:
         logging.error(f"Error in stop command: {e}")
+
 
 @interactions.slash_command(
     name="reboot",
