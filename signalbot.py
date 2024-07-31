@@ -108,7 +108,7 @@ def fetch_telegram_links(address, symbol, name):
             links = extract_telegram_links(reply['text'])
             for full_link, telegram_link in links.items():
                 try:
-                    logging.info(f"Extracted Telegram link: {telegram_link}")
+                    #logging.info(f"Extracted Telegram link: {telegram_link}")
                     if any(sub in telegram_link.lower() for sub in ["cto"]) and \
                        not telegram_link.startswith('+') and \
                        telegram_link not in [
