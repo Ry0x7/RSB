@@ -7,6 +7,8 @@ import asyncio
 import dotenv
 import os
 import pymongo
+import difflib
+import re
 
 dotenv.load_dotenv()
 
@@ -15,7 +17,7 @@ bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
 
 # Define API URLs
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
-SEARCH_API_BASE_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/sol/search?q='
+SEARCH_API_BASE_URL = 'https://frontend-api.pump.fun/'
 WALLET_COUNT_API_BASE_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/tag_wallet_count/sol/'
 
 # Connect to MongoDB
@@ -79,6 +81,40 @@ def calculate_percentage_change(original, current):
     change = ((current - original) / original) * 100
     trend_indicator = "🟢" if change > 0 else "🔴" if change < 0 else ""
     return f"{change:.2f}%", trend_indicator
+
+def is_similar(a, b, threshold=0.6):
+    """Check if two strings are similar based on a threshold."""
+    return difflib.SequenceMatcher(None, a, b).ratio() > threshold
+
+def extract_telegram_links(text):
+    """Extract Telegram links from the text."""
+    links = re.findall(r'https://t\.me/[^\s]+', text)
+    return links
+
+
+def fetch_telegram_links(address, symbol, name):
+    """Fetch Telegram links from replies API and filter valid links."""
+    url = f"{SEARCH_API_BASE_URL}replies/{address}"
+    data = fetch_data(url)
+    if data:
+        valid_links = []
+        for reply in data:
+            links = extract_telegram_links(reply['text'])
+            for link in links:
+                telegram_link = link.split('https://t.me/')[1].split(' ')[0].strip()
+                if any(sub in telegram_link for sub in ["CTO", "Cto", "cto"]) and \
+                   not telegram_link.startswith('+') and \
+                   telegram_link not in [
+                        'officialCTOportal',
+                        'solanaportalcto'
+                   ]:
+                    valid_links.append(link)
+        return filter_telegram_links(valid_links, symbol, name)
+    return []
+
+def filter_telegram_links(links, symbol, name):
+    """Filter Telegram links that are similar to the coin symbol or name."""
+    return [link for link in links if is_similar(link, symbol) or is_similar(link, name)]
 
 def fetch_wallet_counts(address):
     """Fetch wallet counts for the specified address."""
@@ -147,7 +183,7 @@ def generate_embed_fields(item, wallet_counts, social_links):
     coin_info = f"```{item['address']}```\n{social_links}\n💊 **[Pump](https://pump.fun/{item['address']})**\n\n"
     market_cap = int(float(item['usd_market_cap'])) if item.get('usd_market_cap') else 'N/A'
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
-    top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
+    top_10_holder_rate = float(item.get('top_10_holder_rate')) * 100 if item.get('top_10_holder_rate') is not None else 0.0
     progress = float(item.get('progress', 0.0) or 0.0) * 80
     holder_count = item.get('holder_count', 'N/A')
     volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))
@@ -157,14 +193,18 @@ def generate_embed_fields(item, wallet_counts, social_links):
     cto_flag = "✅" if item.get('cto_flag', 0) == 1 else "❌"
     rat_trader_amount_rate = float(item.get('rat_trader_amount_rate', 0.0)) * 100
 
-    # New fields for creator balance and burn amount
     creator_balance = int(float(item.get('creator_balance', 0.00)))
 
     wallet_info = (
         f"🦈 **Whales:** `{wallet_counts['whale_wallets']}` 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
         f"🐀 **Rats:** `{wallet_counts['rat_trader_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
     ) if wallet_counts else ""
-    
+
+    telegram_field_value = "No TG Found"
+    if dev_sold == "✅":
+        telegram_links = fetch_telegram_links(item['address'], item['symbol'], item['name'])
+        telegram_field_value = " | ".join(telegram_links) if telegram_links else "No TG Found"
+
     field_value = (
         f"💎 **FDV:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
         f"📈 **Progress:** `{progress:.2f}%` \n🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
@@ -174,7 +214,7 @@ def generate_embed_fields(item, wallet_counts, social_links):
         f"**CTO?:** {cto_flag} ∙ **Rat Trader:** `{rat_trader_amount_rate:.2f}%`\n"
         f"\n\n\n"
     )
-    
+
     other_info = (
         f"👁️ **Seen At:**`${seen_coins[(item['name'], item['symbol'])]['called_mcap']}`\n"
         f"📊 **1m-Vol:** `${volume_1m}`\n"
@@ -192,7 +232,8 @@ def generate_embed_fields(item, wallet_counts, social_links):
     return {
         "Coin Data": coin_info + field_value,
         "Rug Check": other_info,
-        "Quick Buy": quick_buy
+        "Quick Buy": quick_buy,
+        "CTO TG": telegram_field_value
     }
 
 async def send_or_update_embed(channel, item, task_type):
