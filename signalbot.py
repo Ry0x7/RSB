@@ -88,33 +88,46 @@ def is_similar(a, b, threshold=0.6):
 
 def extract_telegram_links(text):
     """Extract Telegram links from the text."""
-    links = re.findall(r'https://t\.me/[^\s]+', text)
-    return links
-
+    links = re.findall(r'(https?://t\.me/[^\s]+)|(t\.me/[^\s]+)', text)
+    formatted_links = {}
+    for match in links:
+        full_link = match[0] or f"https://{match[1]}"
+        formatted_links[full_link] = full_link.split('t.me/')[1].strip()
+    #logging.info(f"Extracted links: {formatted_links}")
+    return formatted_links
 
 def fetch_telegram_links(address, symbol, name):
     """Fetch Telegram links from replies API and filter valid links."""
     url = f"{SEARCH_API_BASE_URL}replies/{address}"
     data = fetch_data(url)
+    logging.info(f"Fetching Telegram links for address: {address}")
     if data:
         valid_links = []
         for reply in data:
+            #logging.info(f"Processing reply text: {reply['text']}")
             links = extract_telegram_links(reply['text'])
-            for link in links:
-                telegram_link = link.split('https://t.me/')[1].split(' ')[0].strip()
-                if any(sub in telegram_link for sub in ["CTO", "Cto", "cto"]) and \
-                   not telegram_link.startswith('+') and \
-                   telegram_link not in [
-                        'officialCTOportal',
-                        'solanaportalcto'
-                   ]:
-                    valid_links.append(link)
+            for full_link, telegram_link in links.items():
+                try:
+                    logging.info(f"Extracted Telegram link: {telegram_link}")
+                    if any(sub in telegram_link.lower() for sub in ["cto"]) and \
+                       not telegram_link.startswith('+') and \
+                       telegram_link not in [
+                            'officialCTOportal',
+                            'solanaportalcto'
+                       ]:
+                        valid_links.append(full_link)
+                        logging.info(f"Valid Telegram link found: {full_link}")
+                except IndexError:
+                    logging.error(f"Error processing link: {full_link}")
         return filter_telegram_links(valid_links, symbol, name)
+    logging.info("No valid data found for Telegram links.")
     return []
 
 def filter_telegram_links(links, symbol, name):
     """Filter Telegram links that are similar to the coin symbol or name."""
-    return [link for link in links if is_similar(link, symbol) or is_similar(link, name)]
+    filtered_links = [link for link in links if is_similar(link.split('t.me/')[1], symbol) or is_similar(link.split('t.me/')[1], name)]
+    logging.info(f"Filtered Telegram links: {filtered_links}")
+    return filtered_links
 
 def fetch_wallet_counts(address):
     """Fetch wallet counts for the specified address."""
@@ -204,6 +217,8 @@ def generate_embed_fields(item, wallet_counts, social_links):
     if dev_sold == "✅":
         telegram_links = fetch_telegram_links(item['address'], item['symbol'], item['name'])
         telegram_field_value = " | ".join(telegram_links) if telegram_links else "No TG Found"
+        logging.info(f"Telegram links for {item['name']} ({item['symbol']}): {telegram_field_value}")
+
 
     field_value = (
         f"💎 **FDV:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
