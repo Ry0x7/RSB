@@ -82,9 +82,12 @@ def calculate_percentage_change(original, current):
     trend_indicator = "🟢" if change > 0 else "🔴" if change < 0 else ""
     return f"{change:.2f}%", trend_indicator
 
-def is_similar(a, b, threshold=0.6):
+
+def is_similar(a, b, threshold=0.5):  # Lowered threshold for similarity check
     """Check if two strings are similar based on a threshold."""
-    return difflib.SequenceMatcher(None, a, b).ratio() > threshold
+    similarity = difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio()
+    #logging.info(f"Comparing '{a.lower()}' with '{b.lower()}' - Similarity: {similarity}")
+    return similarity > threshold
 
 def extract_telegram_links(text):
     """Extract Telegram links from the text."""
@@ -92,7 +95,7 @@ def extract_telegram_links(text):
     formatted_links = {}
     for match in links:
         full_link = match[0] or f"https://{match[1]}"
-        formatted_links[full_link] = full_link.split('t.me/')[1].strip()
+        formatted_links[full_link] = full_link.split('t.me/')[1].strip().lower()
     #logging.info(f"Extracted links: {formatted_links}")
     return formatted_links
 
@@ -109,25 +112,29 @@ def fetch_telegram_links(address, symbol, name):
             for full_link, telegram_link in links.items():
                 try:
                     #logging.info(f"Extracted Telegram link: {telegram_link}")
-                    if any(sub in telegram_link.lower() for sub in ["cto"]) and \
+                    if any(sub in telegram_link for sub in ["cto"]) and \
                        not telegram_link.startswith('+') and \
                        telegram_link not in [
-                            'officialCTOportal',
+                            'officialctowportal',
                             'solanaportalcto'
                        ]:
-                        if telegram_link not in valid_links:
+                        if full_link not in valid_links:
                             valid_links.add(full_link)
-                            logging.info(f"Valid Telegram link found: {full_link}")
+                            #logging.info(f"Valid Telegram link found: {full_link}")
                 except IndexError:
                     logging.error(f"Error processing link: {full_link}")
-        return filter_telegram_links(valid_links, symbol, name)
+        return filter_telegram_links(list(valid_links), symbol.lower(), name.lower())
     logging.info("No valid data found for Telegram links.")
     return []
 
 def filter_telegram_links(links, symbol, name):
-    """Filter Telegram links that are similar to the coin symbol or name."""
-    filtered_links = [link for link in links if is_similar(link.split('t.me/')[1], symbol) or is_similar(link.split('t.me/')[1], name)]
-    logging.info(f"Filtered Telegram links: {filtered_links}")
+    """Filter Telegram links that contain the coin symbol or name as a substring or are similar."""
+    filtered_links = []
+    for link in links:
+        link_name = link.split('t.me/')[1].lower()
+        if symbol in link_name or name in link_name or is_similar(link_name, symbol) or is_similar(link_name, name):
+            filtered_links.append(link)
+    #logging.info(f"Filtered Telegram links: {filtered_links}")
     return filtered_links
 
 def fetch_wallet_counts(address):
