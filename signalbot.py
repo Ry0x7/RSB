@@ -211,7 +211,6 @@ def generate_embed_fields(item, wallet_counts, social_links):
     reply_count = item.get('reply_count', 'N/A')
     dex_paid = item.get('dexscr_update_link', 0) == 1 or item.get('dexscr_ad', 0) == 1
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
-    cto_flag = "✅" if item.get('cto_flag', 0) == 1 else "❌"
     rat_trader_amount_rate = float(item.get('rat_trader_amount_rate', 0.0)) * 100
 
     creator_balance = int(float(item.get('creator_balance', 0.00)))
@@ -226,14 +225,15 @@ def generate_embed_fields(item, wallet_counts, social_links):
         telegram_field_value = " | ".join(telegram_links) if telegram_links else "No TG Found"
         logging.info(f"Telegram links for {item['name']} ({item['symbol']}): {telegram_field_value}")
 
-
+    ctoflag = "✅" if telegram_links else "❌"
+    
     field_value = (
         f"💎 **FDV:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
         f"📈 **Progress:** `{progress:.2f}%` \n🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
         f"👥 **Holders:** `{holder_count}` 💬 **Rp**: `{reply_count}`\n"
         f"🫅 **Dev SolBal:** `{creator_balance}`\n"
         f"**Dex paid?:** {'✅' if dex_paid else '❌'} ∙ **Dev Sold?:** {dev_sold}\n"
-        f"**CTO?:** {cto_flag} ∙ **Rat Trader:** `{rat_trader_amount_rate:.2f}%`\n"
+        f"**CTO?:** {ctoflag} ∙ **Rat Trader:** `{rat_trader_amount_rate:.2f}%`\n"
         f"\n\n\n"
     )
 
