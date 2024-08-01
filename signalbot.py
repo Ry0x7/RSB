@@ -61,7 +61,7 @@ def fetch_data(url):
 
 def get_time_since_creation(created_timestamp):
     """Calculate the time since the coin was created."""
-    created_time = datetime.utcnowfromtimestamp(created_timestamp)
+    created_time = datetime.utcfromtimestamp(created_timestamp)
     now = datetime.utcnow()
     time_diff = now - created_time
     
@@ -338,8 +338,8 @@ async def send_coins(channel, task_type):
             'new_creation': 'true',
             'min_marketcap': '3800',
             'max_marketcap': '9000',
-            'min_holder_count': '4',
-            'max_created': '5m',
+            'min_holder_count': '5',
+            'max_created': '3m',
         },
         "completing": {
             'limit': '100',
