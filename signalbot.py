@@ -102,7 +102,7 @@ def fetch_telegram_links(address, symbol, name):
     data = fetch_data(url)
     logging.info(f"Fetching Telegram links for address: {address}")
     if data:
-        valid_links = []
+        valid_links = set()
         for reply in data:
             #logging.info(f"Processing reply text: {reply['text']}")
             links = extract_telegram_links(reply['text'])
@@ -115,8 +115,9 @@ def fetch_telegram_links(address, symbol, name):
                             'officialCTOportal',
                             'solanaportalcto'
                        ]:
-                        valid_links.append(full_link)
-                        logging.info(f"Valid Telegram link found: {full_link}")
+                        if telegram_link not in valid_links:
+                            valid_links.add(full_link)
+                            logging.info(f"Valid Telegram link found: {full_link}")
                 except IndexError:
                     logging.error(f"Error processing link: {full_link}")
         return filter_telegram_links(valid_links, symbol, name)
