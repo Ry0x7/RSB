@@ -217,7 +217,7 @@ def generate_embed_fields(item, wallet_counts, social_links):
     creator_balance = int(float(item.get('creator_balance', 0.00)))
 
     wallet_info = (
-        f"🍼 **Fresh:** `{wallet_counts['fresh_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}\n"
+        f"🍼 **Fresh:** `{wallet_counts['fresh_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
     ) if wallet_counts else ""
 
     telegram_field_value = "No TG Found"
