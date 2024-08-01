@@ -62,7 +62,7 @@ def fetch_data(url):
 def get_time_since_creation(created_timestamp):
     """Calculate the time since the coin was created."""
     created_time = datetime.utcfromtimestamp(created_timestamp)
-    now = datetime.utcnow()
+    now = datetime.utc()
     time_diff = now - created_time
     
     if time_diff < timedelta(minutes=1):
@@ -185,7 +185,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     for field_name, field_value in embed_fields.items():
         embed.add_field(name=field_name, value=field_value, inline=False)
 
-    embed.set_footer(text="Rodent Trader ∙ DYOR ∙ Last called: " + datetime.utcnow().strftime("%I:%M:%S %p"))
+    embed.set_footer(text="Rodent Trader ∙ DYOR ∙ Last called: " + datetime.utc().strftime("%I:%M:%S %p"))
     return embed
 
 def get_social_links(item):
@@ -217,8 +217,7 @@ def generate_embed_fields(item, wallet_counts, social_links):
     creator_balance = int(float(item.get('creator_balance', 0.00)))
 
     wallet_info = (
-        f"🦈 **Whales:** `{wallet_counts['whale_wallets']}` 🍼 **Fresh:** `{wallet_counts['fresh_wallets']}`\n"
-        f"🐀 **Rats:** `{wallet_counts['rat_trader_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
+        f"🍼 **Fresh:** `{wallet_counts['fresh_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}\n"
     ) if wallet_counts else ""
 
     telegram_field_value = "No TG Found"
@@ -232,7 +231,7 @@ def generate_embed_fields(item, wallet_counts, social_links):
         f"💎 **FDV:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
         f"📈 **Progress:** `{progress:.2f}%` \n🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
         f"👥 **Holders:** `{holder_count}` 💬 **Rp**: `{reply_count}`\n"
-        f"🫅 **Dev Sol Bal:** `{creator_balance}`\n"
+        f"🫅 **Dev SolBal:** `{creator_balance}`\n"
         f"**Dex paid?:** {'✅' if dex_paid else '❌'} ∙ **Dev Sold?:** {dev_sold}\n"
         f"**CTO?:** {cto_flag} ∙ **Rat Trader:** `{rat_trader_amount_rate:.2f}%`\n"
         f"\n\n\n"
@@ -298,7 +297,7 @@ async def send_or_update_embed(channel, item, task_type):
         # Update volume check
         volume_check[task_type][item['address']] = {
             "last_volume": int(float(item['volume_1m'])),
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.utc()
         }
 
     except Exception as e:
@@ -339,8 +338,8 @@ async def send_coins(channel, task_type):
             'new_creation': 'true',
             'min_marketcap': '3800',
             'max_marketcap': '9000',
-            'min_holder_count': '8',
-            'max_created': '15m',
+            'min_holder_count': '4',
+            'max_created': '3m',
         },
         "completing": {
             'limit': '100',
@@ -384,7 +383,7 @@ async def send_coins(channel, task_type):
                             'name': item['name'],
                             'symbol': item['symbol'],
                             'called_mcap': int(float(item['usd_market_cap'])),
-                            'called_at': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+                            'called_at': datetime.utc().strftime('%Y-%m-%d %H:%M:%S')
                         }},
                         upsert=True
                     )
@@ -422,7 +421,7 @@ async def check_volume_movement():
     while True:
         for task_type, addresses in volume_check.items():
             for address, data in list(addresses.items()):
-                if datetime.utcnow() - data['timestamp'] >= timedelta(minutes=2):
+                if datetime.utc() - data['timestamp'] >= timedelta(minutes=2):
                     current_volume = fetch_current_volume(address)
                     if int(float(current_volume)) == data['last_volume']:
                         logging.info(f"Removing {address} from {task_type} due to no volume movement.")
@@ -433,7 +432,7 @@ async def check_volume_movement():
                             await delete_message(channel, address, task_type)
                     else:
                         volume_check[task_type][address]['last_volume'] = int(float(current_volume))
-                        volume_check[task_type][address]['timestamp'] = datetime.utcnow()
+                        volume_check[task_type][address]['timestamp'] = datetime.utc()
         await asyncio.sleep(120)
 
 def fetch_current_volume(address):
