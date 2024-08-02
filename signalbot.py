@@ -209,6 +209,7 @@ def generate_embed_fields(item, wallet_counts, social_links):
         f"🍼 **Fresh:** `{wallet_counts['fresh_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
     ) if wallet_counts else ""
 
+    telegram_links = []
     telegram_field_value = "No TG Found"
     if dev_sold == "✅":
         telegram_links = fetch_telegram_links(item['address'], item['symbol'], item['name'])
