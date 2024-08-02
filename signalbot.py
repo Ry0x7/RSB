@@ -330,10 +330,10 @@ async def send_coins(channel, task_type):
             'orderby': 'usd_market_cap',
             'direction': 'desc',
             'soaring': 'true',
-            'min_volume': '5000',
+            'min_volume': '3000',
             'min_marketcap': '9000',
             'max_marketcap': '50000',
-            'min_holder_count': '70',
+            'min_holder_count': '50',
             'max_created': '2h',
         },
         "new": {
@@ -351,7 +351,7 @@ async def send_coins(channel, task_type):
             'orderby': 'usd_market_cap',
             'direction': 'desc',
             'pump': 'true',
-            'min_progress': '0.65',
+            'min_progress': '0.7',
             'max_created': '2h',
         }
     }
