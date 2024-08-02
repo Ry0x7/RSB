@@ -28,7 +28,7 @@ coins_collection = db['coins']
 sessions_collection = db['sessions']
 
 # Store last data and seen coins/tickers
-last_data = {"soaring": None, "new": None, "completing": None}
+last_data = {}
 seen_coins = {}
 seen_tickers = {}
 
@@ -39,11 +39,11 @@ owner_username = "chakazzz"
 logging.basicConfig(level=logging.INFO)
 
 # Store running tasks and sent messages
-running_tasks = {"soaring": {}, "new": {}, "completing": {}}
-sent_messages = {"soaring": {}, "new": {}, "completing": {}}
+running_tasks = {}
+sent_messages = {}
 
 # Store the last volume check for each coin
-volume_check = {"soaring": {}, "new": {}, "completing": {}}
+volume_check = {}
 
 def fetch_data(url):
     """Fetch data from the specified URL."""
@@ -82,11 +82,9 @@ def calculate_percentage_change(original, current):
     trend_indicator = "🟢" if change > 0 else "🔴" if change < 0 else ""
     return f"{change:.2f}%", trend_indicator
 
-
-def is_similar(a, b, threshold=0.5):  # Lowered threshold for similarity check
+def is_similar(a, b, threshold=0.4):
     """Check if two strings are similar based on a threshold."""
     similarity = difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio()
-    #logging.info(f"Comparing '{a.lower()}' with '{b.lower()}' - Similarity: {similarity}")
     return similarity > threshold
 
 def extract_telegram_links(text):
@@ -96,7 +94,6 @@ def extract_telegram_links(text):
     for match in links:
         full_link = match[0] or f"https://{match[1]}"
         formatted_links[full_link] = full_link.split('t.me/')[1].strip().lower()
-    #logging.info(f"Extracted links: {formatted_links}")
     return formatted_links
 
 def fetch_telegram_links(address, symbol, name):
@@ -107,20 +104,15 @@ def fetch_telegram_links(address, symbol, name):
     if data:
         valid_links = set()
         for reply in data:
-            #logging.info(f"Processing reply text: {reply['text']}")
             links = extract_telegram_links(reply['text'])
             for full_link, telegram_link in links.items():
                 try:
-                    #logging.info(f"Extracted Telegram link: {telegram_link}")
-                    if any(sub in telegram_link for sub in ["cto"]) and \
-                       not telegram_link.startswith('+') and \
+                    if not telegram_link.startswith('+') and \
                        telegram_link not in [
                             'officialctowportal',
                             'solanaportalcto'
                        ]:
-                        if full_link not in valid_links:
-                            valid_links.add(full_link)
-                            #logging.info(f"Valid Telegram link found: {full_link}")
+                        valid_links.add(full_link)
                 except IndexError:
                     logging.error(f"Error processing link: {full_link}")
         return filter_telegram_links(list(valid_links), symbol.lower(), name.lower())
@@ -134,7 +126,6 @@ def filter_telegram_links(links, symbol, name):
         link_name = link.split('t.me/')[1].lower()
         if symbol in link_name or name in link_name or is_similar(link_name, symbol) or is_similar(link_name, name):
             filtered_links.append(link)
-    #logging.info(f"Filtered Telegram links: {filtered_links}")
     return filtered_links
 
 def fetch_wallet_counts(address):
@@ -154,7 +145,6 @@ def format_large_number(value):
     elif value >= 1_000:
         return f"{value / 1_000:.1f}k"
     return str(value)
-
 
 def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator=""):
     """Format the embed message for the coin."""
@@ -227,12 +217,16 @@ def generate_embed_fields(item, wallet_counts, social_links):
 
     ctoflag = "✅" if telegram_links else "❌"
     
+    dex_status_check = f"[Check Status](https://www.checkdex.xyz/{item['address']})"
+    
     field_value = (
         f"💎 **FDV:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
-        f"📈 **Progress:** `{progress:.2f}%` \n🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
-        f"👥 **Holders:** `{holder_count}` 💬 **Rp**: `{reply_count}`\n"
+        f"📈 **Progress:** `{progress:.2f}%` \n"
+        f"🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
+        f"👥 **Holders:** `{holder_count}`\n"
         f"🫅 **Dev SolBal:** `{creator_balance}`\n"
-        f"**Dex paid?:** {'✅' if dex_paid else '❌'} ∙ **Dev Sold?:** {dev_sold}\n"
+        f"**Dex paid?:** {'✅' if dex_paid else '❌'} | {dex_status_check} \n"
+        f"**Dev Sold?:** {dev_sold}\n"
         f"**CTO?:** {ctoflag} ∙ **Rat Trader:** `{rat_trader_amount_rate:.2f}%`\n"
         f"\n\n\n"
     )
@@ -260,7 +254,12 @@ def generate_embed_fields(item, wallet_counts, social_links):
 
 async def send_or_update_embed(channel, item, task_type):
     """Send or update the embed message for the coin."""
-    sent_messages_task = sent_messages[task_type]
+    channel_id = channel.id
+    if channel_id not in sent_messages:
+        sent_messages[channel_id] = {"soaring": {}, "new": {}, "completing": {}}
+        volume_check[channel_id] = {"soaring": {}, "new": {}, "completing": {}}
+    
+    sent_messages_task = sent_messages[channel_id][task_type]
     updated = item['address'] in sent_messages_task
     trend, percentage_change, trend_indicator = "", "", ""
     
@@ -295,7 +294,7 @@ async def send_or_update_embed(channel, item, task_type):
             sent_messages_task[item['address']] = message.id
         
         # Update volume check
-        volume_check[task_type][item['address']] = {
+        volume_check[channel_id][task_type][item['address']] = {
             "last_volume": int(float(item['volume_1m'])),
             "timestamp": datetime.utcnow()
         }
@@ -305,20 +304,26 @@ async def send_or_update_embed(channel, item, task_type):
 
 async def delete_old_messages(channel, valid_addresses, task_type):
     """Delete old messages that are no longer valid."""
-    sent_messages_task = sent_messages[task_type]
-    for address, message_id in list(sent_messages_task.items()):
-        if address not in valid_addresses:
-            try:
-                message = await channel.fetch_message(message_id)
-                if message:
-                    await message.delete()
-                del sent_messages_task[address]
-            except interactions.errors.NotFound:
-                del sent_messages_task[address]
+    channel_id = channel.id
+    if channel_id in sent_messages:
+        sent_messages_task = sent_messages[channel_id][task_type]
+        for address, message_id in list(sent_messages_task.items()):
+            if address not in valid_addresses:
+                try:
+                    message = await channel.fetch_message(message_id)
+                    if message:
+                        await message.delete()
+                    del sent_messages_task[address]
+                except interactions.errors.NotFound:
+                    del sent_messages_task[address]
 
 async def send_coins(channel, task_type):
     """Send coins information to the channel."""
     global last_data
+    channel_id = channel.id
+    if channel_id not in last_data:
+        last_data[channel_id] = {"soaring": None, "new": None, "completing": None}
+    
     params = {
         "soaring": {
             'limit': '100',
@@ -353,8 +358,8 @@ async def send_coins(channel, task_type):
     try:
         url = build_query_url(BASE_URL, params[task_type])
         data = fetch_data(url)
-        if data and data['data']['rank'] != last_data[task_type]:
-            last_data[task_type] = data['data']['rank']
+        if data and data['data']['rank'] != last_data[channel_id][task_type]:
+            last_data[channel_id][task_type] = data['data']['rank']
             valid_addresses = {item['address'] for item in data['data']['rank']}
             for item in data['data']['rank']:
                 coin_key = (item['name'], item['symbol'])
@@ -419,20 +424,18 @@ def fetch_current_market_cap(address):
 async def check_volume_movement():
     """Check if the volume is moving for each coin."""
     while True:
-        for task_type, addresses in volume_check.items():
-            for address, data in list(addresses.items()):
-                if datetime.utcnow() - data['timestamp'] >= timedelta(minutes=2):
-                    current_volume = fetch_current_volume(address)
-                    if int(float(current_volume)) == data['last_volume']:
-                        logging.info(f"Removing {address} from {task_type} due to no volume movement.")
-                        channel_id = [k for k, v in sent_messages[task_type].items() if v == address]
-                        if channel_id:
-                            channel_id = channel_id[0]
+        for channel_id, channel_data in volume_check.items():
+            for task_type, addresses in channel_data.items():
+                for address, data in list(addresses.items()):
+                    if datetime.utcnow() - data['timestamp'] >= timedelta(minutes=2):
+                        current_volume = fetch_current_volume(address)
+                        if int(float(current_volume)) == data['last_volume']:
+                            logging.info(f"Removing {address} from {task_type} in channel {channel_id} due to no volume movement.")
                             channel = await bot.fetch_channel(channel_id)
                             await delete_message(channel, address, task_type)
-                    else:
-                        volume_check[task_type][address]['last_volume'] = int(float(current_volume))
-                        volume_check[task_type][address]['timestamp'] = datetime.utcnow()
+                        else:
+                            volume_check[channel_id][task_type][address]['last_volume'] = int(float(current_volume))
+                            volume_check[channel_id][task_type][address]['timestamp'] = datetime.utcnow()
         await asyncio.sleep(120)
 
 def fetch_current_volume(address):
@@ -447,16 +450,18 @@ def fetch_current_volume(address):
 
 async def delete_message(channel, address, task_type):
     """Delete a specific message from the channel."""
-    try:
-        message_id = sent_messages[task_type][address]
-        message = await channel.fetch_message(message_id)
-        if message:
-            await message.delete()
-        del sent_messages[task_type][address]
-        del volume_check[task_type][address]
-    except interactions.errors.NotFound:
-        del sent_messages[task_type][address]
-        del volume_check[task_type][address]
+    channel_id = channel.id
+    if channel_id in sent_messages and address in sent_messages[channel_id][task_type]:
+        try:
+            message_id = sent_messages[channel_id][task_type][address]
+            message = await channel.fetch_message(message_id)
+            if message:
+                await message.delete()
+            del sent_messages[channel_id][task_type][address]
+            del volume_check[channel_id][task_type][address]
+        except interactions.errors.NotFound:
+            del sent_messages[channel_id][task_type][address]
+            del volume_check[channel_id][task_type][address]
 
 @bot.event
 async def on_ready():
@@ -473,7 +478,7 @@ async def resume_sessions():
         channel = await bot.fetch_channel(session['channel_id'])
         task_type = session['task_type']
         valid_addresses = set(session['valid_addresses'])
-        running_tasks[task_type][channel.id] = await aiojobs.create_scheduler().spawn(loop_send_coins(channel, task_type, valid_addresses))
+        running_tasks[session['channel_id']] = await aiojobs.create_scheduler().spawn(loop_send_coins(channel, task_type, valid_addresses))
 
 async def admin_command(ctx):
     """Check if the user has admin permissions."""
@@ -486,13 +491,16 @@ async def start_task(ctx, task_type):
     if not await admin_command(ctx):
         await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
         return
-    if ctx.channel.id in running_tasks[task_type]:
-        await ctx.send(f'Task {task_type.capitalize()} is already running in this channel.', ephemeral=True)
-        return
+    if ctx.channel.id in running_tasks:
+        if task_type in running_tasks[ctx.channel.id]:
+            await ctx.send(f'Task {task_type.capitalize()} is already running in this channel.', ephemeral=True)
+            return
     await ctx.send(f'Grabbing {task_type.capitalize()} Coins for the BAGSS! 👜', ephemeral=True)
     scheduler = await aiojobs.create_scheduler()
     task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type))
-    running_tasks[task_type][ctx.channel.id] = task
+    if ctx.channel.id not in running_tasks:
+        running_tasks[ctx.channel.id] = {}
+    running_tasks[ctx.channel.id][task_type] = task
     await ctx.send(f'Started sending {task_type} coin information. 📈', ephemeral=True)
 
 @interactions.slash_command(
@@ -534,22 +542,24 @@ async def stop(ctx):
             await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
             return
         stopped_any = False
-        for task_type in ["soaring", "new", "completing"]:
-            if ctx.channel.id in running_tasks[task_type]:
-                await running_tasks[task_type][ctx.channel.id].close()
-                del running_tasks[task_type][ctx.channel.id]
-                stopped_any = True
+        if ctx.channel.id in running_tasks:
+            for task_type in ["soaring", "new", "completing"]:
+                if task_type in running_tasks[ctx.channel.id]:
+                    await running_tasks[ctx.channel.id][task_type].close()
+                    del running_tasks[ctx.channel.id][task_type]
+                    stopped_any = True
                 
-                # Delete all previous messages for this task type in this channel
-                for address, message_id in list(sent_messages[task_type].items()):
-                    try:
-                        message = await ctx.channel.fetch_message(message_id)
-                        if message.channel_id == ctx.channel.id:
-                            await message.delete()
-                            del sent_messages[task_type][address]
-                    except interactions.errors.NotFound:
-                        del sent_messages[task_type][address]
-                break  # Only stop one task type
+                    # Delete all previous messages for this task type in this channel
+                    if ctx.channel.id in sent_messages:
+                        for address, message_id in list(sent_messages[ctx.channel.id][task_type].items()):
+                            try:
+                                message = await ctx.channel.fetch_message(message_id)
+                                if message.channel_id == ctx.channel.id:
+                                    await message.delete()
+                                    del sent_messages[ctx.channel.id][task_type][address]
+                            except interactions.errors.NotFound:
+                                del sent_messages[ctx.channel.id][task_type][address]
+                        break  # Only stop one task type
 
         if stopped_any:
             await ctx.send(f'Stopped sending {task_type} token information and deleted all previous messages in this channel. ❌', ephemeral=True)
@@ -557,7 +567,6 @@ async def stop(ctx):
             await ctx.send('No active tasks to stop in this channel. ❌', ephemeral=True)
     except Exception as e:
         logging.error(f"Error in stop command: {e}")
-
 
 @interactions.slash_command(
     name="reboot",
@@ -571,14 +580,17 @@ async def reboot(ctx):
             await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
             return
         stopped_any = False
-        for task_type in ["soaring", "new", "completing"]:
-            if ctx.channel.id in running_tasks[task_type]:
-                await running_tasks[task_type][ctx.channel.id].close()
-                del running_tasks[task_type][ctx.channel.id]
-                scheduler = await aiojobs.create_scheduler()
-                task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type))
-                running_tasks[task_type][ctx.channel.id] = task
-                stopped_any = True
+        if ctx.channel.id in running_tasks:
+            for task_type in ["soaring", "new", "completing"]:
+                if task_type in running_tasks[ctx.channel.id]:
+                    await running_tasks[ctx.channel.id][task_type].close()
+                    del running_tasks[ctx.channel.id][task_type]
+                    scheduler = await aiojobs.create_scheduler()
+                    task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type))
+                    if ctx.channel.id not in running_tasks:
+                        running_tasks[ctx.channel.id] = {}
+                    running_tasks[ctx.channel.id][task_type] = task
+                    stopped_any = True
         if stopped_any:
             await ctx.send('Rebooted the coin information sending loops. 🔄', ephemeral=True)
         else:
@@ -628,13 +640,13 @@ async def loop_send_coins(channel, task_type, valid_addresses=None):
 async def monitor_tasks():
     """Monitor tasks to ensure they are running."""
     while True:
-        for task_type in ["soaring", "new", "completing"]:
-            for channel_id, task in list(running_tasks[task_type].items()):
+        for channel_id, task_data in list(running_tasks.items()):
+            for task_type, task in task_data.items():
                 if task.done():
                     logging.warning(f"Task for channel {channel_id} has stopped. Restarting {task_type} task...")
                     channel = await bot.fetch_channel(channel_id)
                     new_task = await aiojobs.create_scheduler().spawn(loop_send_coins(channel, task_type))
-                    running_tasks[task_type][channel_id] = new_task
+                    running_tasks[channel_id][task_type] = new_task
         await asyncio.sleep(60)
 
 bot.start()
