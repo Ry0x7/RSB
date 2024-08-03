@@ -107,7 +107,8 @@ def fetch_telegram_links(address, symbol, name):
             links = extract_telegram_links(reply['text'])
             for full_link, telegram_link in links.items():
                 try:
-                    if not telegram_link.startswith('+') and \
+                    if any(sub in telegram_link for sub in ["cto"]) and \
+                       not telegram_link.startswith('+') and \
                        telegram_link not in [
                             'officialctowportal',
                             'solanaportalcto'
@@ -122,10 +123,12 @@ def fetch_telegram_links(address, symbol, name):
 def filter_telegram_links(links, symbol, name):
     """Filter Telegram links that contain the coin symbol or name as a substring or are similar."""
     filtered_links = []
+    seen_links = set()
     for link in links:
         link_name = link.split('t.me/')[1].lower()
-        if symbol in link_name or name in link_name or is_similar(link_name, symbol) or is_similar(link_name, name):
+        if (symbol in link_name or name in link_name or is_similar(link_name, symbol) or is_similar(link_name, name)) and link not in seen_links:
             filtered_links.append(link)
+            seen_links.add(link)
     return filtered_links
 
 def fetch_wallet_counts(address):
