@@ -151,6 +151,9 @@ def fetch_top_buyers(address):
         if check_dev_sniper_tags(holders):
             logging.info(f"Token {address} has dev_team and sniper tags in a single wallet. Skipping.")
             return None
+        if check_sniper_count(holders):
+            logging.info(f"Token {address} has more than 3 sniper wallets. Skipping.")
+            return None
         return data['data']
     else:
         logging.error(f"No valid data returned for top buyers of address {address}")
@@ -233,7 +236,7 @@ def check_sniper_count(holders):
     if 'holderInfo' not in holders:
         return False
     sniper_count = sum('sniper' in holder['maker_token_tags'] for holder in holders['holderInfo'])
-    return sniper_count > 5
+    return sniper_count > 3
 
 
 def generate_embed_fields(item, social_links, top_buyers):
