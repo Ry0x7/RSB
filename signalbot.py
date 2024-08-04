@@ -254,10 +254,11 @@ def generate_embed_fields(item, social_links, top_buyers):
     creator_balance = int(float(item.get('creator_balance', 0.00)))
     
     holders = top_buyers.get('holders', {})
-    fresh_wallet_count = sum('fresh_wallet' in holder['maker_token_tags'] for holder in holders.get('holderInfo', []))
+    fresh_wallet_count = sum('fresh_wallet' in holder['tags'] for holder in holders.get('holderInfo', []))
     sniper_count = sum('sniper' in holder['maker_token_tags'] for holder in holders.get('holderInfo', []))
     rat_trader_count = sum('rat_trader' in holder['maker_token_tags'] for holder in holders.get('holderInfo', []))
-    
+    smart_trader_count = sum('pump_smart' in holder['tags'] for holder in holders.get('holderInfo', []))
+
     telegram_links = []
     telegram_field_value = "No TG Found"
     if dev_sold == "✅":
@@ -280,6 +281,7 @@ def generate_embed_fields(item, social_links, top_buyers):
 
     status_now = top_buyers['holders']['statusNow'] if top_buyers else {}
     buyers_info = (
+        f"🕴️ Buyer Count: {holders.get('holder_count', 'N/A')}\n"
         f"🌑 Hold: `{status_now.get('hold', 'N/A')}`\n"
         f"🌚 Bought More: `{status_now.get('bought_more', 'N/A')}`\n"
         f"🌓 Sold Part: `{status_now.get('sold_part', 'N/A')}`\n"
@@ -293,6 +295,7 @@ def generate_embed_fields(item, social_links, top_buyers):
         f"🍼 Fresh Wallets: `{fresh_wallet_count}`\n"
         f"🎯 Snipers: `{sniper_count}`\n"
         f"🐀 Rats: `{rat_trader_count}`\n"
+        f"🧠 Smart Traders: `{smart_trader_count}`\n"
         f"⚡ Dex paid?: {'✅' if dex_paid else '❌'} | {dex_status_check} \n"
         f"🧑‍💻 Dev Sold?: {dev_sold}\n"
         f"🫂 CTO?: {ctoflag}\n"
