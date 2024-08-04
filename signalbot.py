@@ -287,7 +287,6 @@ def generate_embed_fields(item, social_links, top_buyers):
         f"🌓 Sold Part: `{status_now.get('sold_part', 'N/A')}`\n"
         f"🌕 Sold: `{status_now.get('sold', 'N/A')}`\n"
         f"💸 Transfered: `{status_now.get('transfered', 'N/A')}`\n"
-        f"💰 Bought Rate: `{format_percentage(status_now.get('bought_rate'))}`\n"
         f"💵 Holding Rate: `{format_percentage(status_now.get('holding_rate'))}`\n"
     ) if status_now else "Top buyers data not available."
 
