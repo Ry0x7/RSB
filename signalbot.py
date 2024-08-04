@@ -272,7 +272,7 @@ def generate_embed_fields(item, social_links, top_buyers):
     field_value = (
         f"💎 **MCAP:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
         f"📊 **1m-Vol:** `${volume_1m}`\n"
-        f"👁️ **Called At:**`${seen_coins[(item['name'], item['symbol'])]['called_mcap']}`**MCAP**\n"
+        f"👁️ **Called At:** `${seen_coins[(item['name'], item['symbol'])]['called_mcap']}`\n"
         f"🏆 **Top10**: `{top_10_holder_rate:.2f}%` 👥 **Holders:** `{holder_count}`\n"
         f"🫅 **Dev SolBal:** `{creator_balance}`\n"
         f"\n\n\n"
