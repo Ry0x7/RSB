@@ -19,6 +19,7 @@ bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
 SEARCH_API_BASE_URL = 'https://frontend-api.pump.fun/'
 WALLET_COUNT_API_BASE_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/tag_wallet_count/sol/'
+TOP_BUYERS_API_BASE_URL = 'https://gmgn.ai/defi/quotation/v1/tokens/top_buyers/sol/'
 
 # Connect to MongoDB
 MONGO_URI = os.getenv('MONGO_URI')
@@ -141,6 +142,22 @@ def fetch_wallet_counts(address):
         logging.error(f"No valid data returned for wallet counts of address {address}")
     return None
 
+def fetch_top_buyers(address):
+    """Fetch top buyers data for the specified address."""
+    url = f"{TOP_BUYERS_API_BASE_URL}{address}"
+    data = fetch_data(url)
+    if data and data['code'] == 0:
+        holders = data['data'].get('holders', {})
+        if check_dev_sniper_tags(holders):
+            logging.info(f"Token {address} has dev_team and sniper tags in a single wallet. Skipping.")
+            return None
+        return data['data']
+    else:
+        logging.error(f"No valid data returned for top buyers of address {address}")
+    return None
+
+
+
 def format_large_number(value):
     """Format large numbers into shorthand notation."""
     if value >= 1_000_000:
@@ -148,6 +165,12 @@ def format_large_number(value):
     elif value >= 1_000:
         return f"{value / 1_000:.1f}k"
     return str(value)
+
+def format_percentage(value):
+    """Format a value as a percentage."""
+    if value is None:
+        return "N/A"
+    return f"{float(value) * 100:.2f}%"
 
 def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator=""):
     """Format the embed message for the coin."""
@@ -168,13 +191,18 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     embed.set_thumbnail(url=logo_url)
 
     social_links = get_social_links(item)
-    wallet_counts = fetch_wallet_counts(item['address'])
+    # wallet_counts = fetch_wallet_counts(item['address'])
+    top_buyers = fetch_top_buyers(item['address'])
 
-    if wallet_counts and wallet_counts['sniper_wallets'] > 5:
-        logging.info(f"Token {item['address']} has more than 5 sniper wallets. Skipping.")
+    # if wallet_counts and wallet_counts['sniper_wallets'] > 5:
+    #     logging.info(f"Token {item['address']} has more than 5 sniper wallets. Skipping.")
+    #     return None
+
+    if top_buyers is None:
+        logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
         return None
 
-    embed_fields = generate_embed_fields(item, wallet_counts, social_links)
+    embed_fields = generate_embed_fields(item, social_links, top_buyers)
     for field_name, field_value in embed_fields.items():
         embed.add_field(name=field_name, value=field_value, inline=False)
 
@@ -192,7 +220,23 @@ def get_social_links(item):
 
     return " **∙** ".join(filter(None, [telegram_link, twitter_link, website_link]))
 
-def generate_embed_fields(item, wallet_counts, social_links):
+def check_dev_sniper_tags(holders):
+    """Check if there are wallets with both dev_team and sniper tags."""
+    for holder in holders.get('holderInfo', []):
+        if 'dev_team' in holder['maker_token_tags'] and 'sniper' in holder['maker_token_tags']:
+            return True
+    return False
+
+
+def check_sniper_count(holders):
+    """Check if there are more than 5 sniper wallets."""
+    if 'holderInfo' not in holders:
+        return False
+    sniper_count = sum('sniper' in holder['maker_token_tags'] for holder in holders['holderInfo'])
+    return sniper_count > 5
+
+
+def generate_embed_fields(item, social_links, top_buyers):
     """Generate the fields for the embed."""
     coin_info = f"```{item['address']}```\n{social_links}\n💊 **[Pump](https://pump.fun/{item['address']})**\n\n"
     market_cap = int(float(item['usd_market_cap'])) if item.get('usd_market_cap') else 'N/A'
@@ -201,17 +245,16 @@ def generate_embed_fields(item, wallet_counts, social_links):
     progress = float(item.get('progress', 0.0) or 0.0) * 80
     holder_count = item.get('holder_count', 'N/A')
     volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))
-    reply_count = item.get('reply_count', 'N/A')
     dex_paid = item.get('dexscr_update_link', 0) == 1 or item.get('dexscr_ad', 0) == 1
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
-    rat_trader_amount_rate = float(item.get('rat_trader_amount_rate', 0.0)) * 100
 
     creator_balance = int(float(item.get('creator_balance', 0.00)))
-
-    wallet_info = (
-        f"🍼 **Fresh:** `{wallet_counts['fresh_wallets']}` 🔫 **Snipers:** `{wallet_counts['sniper_wallets']}`\n"
-    ) if wallet_counts else ""
-
+    
+    holders = top_buyers.get('holders', {})
+    fresh_wallet_count = sum('fresh_wallet' in holder['maker_token_tags'] for holder in holders.get('holderInfo', []))
+    sniper_count = sum('sniper' in holder['maker_token_tags'] for holder in holders.get('holderInfo', []))
+    rat_trader_count = sum('rat_trader' in holder['maker_token_tags'] for holder in holders.get('holderInfo', []))
+    
     telegram_links = []
     telegram_field_value = "No TG Found"
     if dev_sold == "✅":
@@ -224,21 +267,32 @@ def generate_embed_fields(item, wallet_counts, social_links):
     dex_status_check = f"[Check Status](https://www.checkdex.xyz/{item['address']})"
     
     field_value = (
-        f"💎 **FDV:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
-        f"📈 **Progress:** `{progress:.2f}%` \n"
-        f"🏆 **Top10**: `{top_10_holder_rate:.2f}%`\n"
-        f"👥 **Holders:** `{holder_count}`\n"
+        f"💎 **MCAP:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
+        f"📊 **1m-Vol:** `${volume_1m}`\n"
+        f"👁️ **Called At:**`${seen_coins[(item['name'], item['symbol'])]['called_mcap']}`**MCAP**\n"
+        f"🏆 **Top10**: `{top_10_holder_rate:.2f}%` 👥 **Holders:** `{holder_count}`\n"
         f"🫅 **Dev SolBal:** `{creator_balance}`\n"
-        f"**Dex paid?:** {'✅' if dex_paid else '❌'} | {dex_status_check} \n"
-        f"**Dev Sold?:** {dev_sold}\n"
-        f"**CTO?:** {ctoflag} ∙ **Rat Trader:** `{rat_trader_amount_rate:.2f}%`\n"
         f"\n\n\n"
     )
 
+    status_now = top_buyers['holders']['statusNow'] if top_buyers else {}
+    buyers_info = (
+        f"🌑 Hold: `{status_now.get('hold', 'N/A')}`\n"
+        f"🌚 Bought More: `{status_now.get('bought_more', 'N/A')}`\n"
+        f"🌓 Sold Part: `{status_now.get('sold_part', 'N/A')}`\n"
+        f"🌕 Sold All: `{status_now.get('sold', 'N/A')}`\n"
+        f"💸 Transfered: `{status_now.get('transfered', 'N/A')}`\n"
+        f"💰 Bought Rate: `{format_percentage(status_now.get('bought_rate'))}`\n"
+        f"💵 Holding Rate: `{format_percentage(status_now.get('holding_rate'))}`\n"
+    ) if status_now else "Top buyers data not available."
+
     other_info = (
-        f"👁️ **Seen At:**`${seen_coins[(item['name'], item['symbol'])]['called_mcap']}`\n"
-        f"📊 **1m-Vol:** `${volume_1m}`\n"
-        f"{wallet_info}"
+        f"🍼 Fresh Wallets: `{fresh_wallet_count}`\n"
+        f"🎯 Snipers: `{sniper_count}`\n"
+        f"🐀 Rats: `{rat_trader_count}`\n"
+        f"⚡ Dex paid?: {'✅' if dex_paid else '❌'} | {dex_status_check} \n"
+        f"🧑‍💻 Dev Sold?: {dev_sold}\n"
+        f"🫂 CTO?: {ctoflag}\n"
     )
 
     quick_buy = (
@@ -251,9 +305,10 @@ def generate_embed_fields(item, wallet_counts, social_links):
 
     return {
         "Coin Data": coin_info + field_value,
-        "Rug Check": other_info,
-        "Quick Buy": quick_buy,
-        "CTO TG": telegram_field_value
+        "**Top Buyer Data**": buyers_info,
+        "**Rug Check**": other_info,
+        "**Quick Buy**": quick_buy,
+        "**CTO TG**": telegram_field_value,
     }
 
 async def send_or_update_embed(channel, item, task_type):
