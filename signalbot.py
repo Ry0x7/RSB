@@ -281,7 +281,7 @@ def generate_embed_fields(item, social_links, top_buyers):
 
     status_now = top_buyers['holders']['statusNow'] if top_buyers else {}
     buyers_info = (
-        f"🕴️ Buyer Count: {holders.get('holder_count', 'N/A')}\n"
+        f"🕴️ Buyer Count: `{holders.get('holder_count', 'N/A')}`\n"
         f"🌑 Hold: `{status_now.get('hold', 'N/A')}`\n"
         f"🌚 Bought More: `{status_now.get('bought_more', 'N/A')}`\n"
         f"🌓 Sold Part: `{status_now.get('sold_part', 'N/A')}`\n"
