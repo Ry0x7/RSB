@@ -159,7 +159,24 @@ def fetch_top_buyers(address):
         logging.error(f"No valid data returned for top buyers of address {address}")
     return None
 
+# Function to fetch bubblemap data
+def fetch_bubblemap_data(address):
+    """Fetch bubblemap data for the specified address."""
+    url = f"https://europe-west1-cryptos-tools.cloudfunctions.net/get-bubble-graph-data?token={address}&chain=sol&pumpfun=true"
+    data = fetch_data(url)
+    if data:
+        return data
+    else:
+        logging.error(f"No valid data returned for bubblemap of address {address}")
+    return None
 
+# Function to count connected wallets from bubblemap data
+def count_connected_wallets(bubblemap_data):
+    """Count the number of connected wallets from the bubblemap data."""
+    if not bubblemap_data:
+        return 0
+    links = bubblemap_data.get('links', [])
+    return len(links)
 
 def format_large_number(value):
     """Format large numbers into shorthand notation."""
@@ -196,6 +213,8 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     social_links = get_social_links(item)
     # wallet_counts = fetch_wallet_counts(item['address'])
     top_buyers = fetch_top_buyers(item['address'])
+    bubblemap_data = fetch_bubblemap_data(item['address'])
+    connected_wallets = count_connected_wallets(bubblemap_data)
 
     # if wallet_counts and wallet_counts['sniper_wallets'] > 5:
     #     logging.info(f"Token {item['address']} has more than 5 sniper wallets. Skipping.")
@@ -205,7 +224,7 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
         logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
         return None
 
-    embed_fields = generate_embed_fields(item, social_links, top_buyers)
+    embed_fields = generate_embed_fields(item, social_links, top_buyers, connected_wallets)
     for field_name, field_value in embed_fields.items():
         embed.add_field(name=field_name, value=field_value, inline=False)
 
@@ -239,7 +258,7 @@ def check_sniper_count(holders):
     return sniper_count > 3
 
 
-def generate_embed_fields(item, social_links, top_buyers):
+def generate_embed_fields(item, social_links, top_buyers, connected_wallets):
     """Generate the fields for the embed."""
     coin_info = f"```{item['address']}```\n{social_links}\n💊 **[Pump](https://pump.fun/{item['address']})**\n\n"
     market_cap = int(float(item['usd_market_cap'])) if item.get('usd_market_cap') else 'N/A'
@@ -269,6 +288,7 @@ def generate_embed_fields(item, social_links, top_buyers):
     ctoflag = "✅" if telegram_links else "❌"
     
     dex_status_check = f"[Check Status](https://www.checkdex.xyz/{item['address']})"
+    bubblemap_check = f"[Bubblemap](https://app.bubblemaps.io/sol/token/{item['address']}?pumpfun=true)"
     
     field_value = (
         f"💎 **MCAP:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
@@ -281,13 +301,12 @@ def generate_embed_fields(item, social_links, top_buyers):
 
     status_now = top_buyers['holders']['statusNow'] if top_buyers else {}
     buyers_info = (
-        f"🕴️ Buyer Count: `{holders.get('holder_count', 'N/A')}`\n"
+        f"🕴️ Holders Count: `{holders.get('holder_count', 'N/A')}`\n"
         f"🌑 Hold: `{status_now.get('hold', 'N/A')}`\n"
         f"🌚 Bought More: `{status_now.get('bought_more', 'N/A')}`\n"
         f"🌓 Sold Part: `{status_now.get('sold_part', 'N/A')}`\n"
-        f"🌕 Sold: `{status_now.get('sold', 'N/A')}`\n"
-        f"💸 Transfered: `{status_now.get('transfered', 'N/A')}`\n"
-        f"💵 Holding Rate: `{format_percentage(status_now.get('holding_rate'))}`\n"
+        f"🌕 Sold All: `{status_now.get('sold', 'N/A')}`\n"
+        f"💵 Total Holdings: `{format_percentage(status_now.get('holding_rate'))}`\n"
     ) if status_now else "Top buyers data not available."
 
     other_info = (
@@ -295,6 +314,7 @@ def generate_embed_fields(item, social_links, top_buyers):
         f"🎯 Snipers: `{sniper_count}`\n"
         f"🐀 Rats: `{rat_trader_count}`\n"
         f"🧠 Smart Traders: `{smart_trader_count}`\n"
+        f"🔗 Connected Wallets: `{connected_wallets}` | {bubblemap_check}\n"
         f"⚡ Dex paid?: {'✅' if dex_paid else '❌'} | {dex_status_check} \n"
         f"🧑‍💻 Dev Sold?: {dev_sold}\n"
         f"🫂 CTO?: {ctoflag}\n"
@@ -310,7 +330,7 @@ def generate_embed_fields(item, social_links, top_buyers):
 
     return {
         "Coin Data": coin_info + field_value,
-        "**Top Buyer Data**": buyers_info,
+        "**First 70 Buyer Data**": buyers_info,
         "**Rug Check**": other_info,
         "**Quick Buy**": quick_buy,
         "**CTO TG**": telegram_field_value,
