@@ -271,7 +271,9 @@ def generate_embed_fields(item, social_links, top_buyers, connected_wallets):
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
 
     creator_balance = int(float(item.get('creator_balance', 0.00)))
-    
+    creator_balance_rate = float(item.get('creator_balance_rate', 0.0)) * 100 if item.get('creator_balance_rate') else None
+    dev_status = "Dev Sold: ✅" if item.get('creator_close', False) else f"Dev Holds: `{creator_balance_rate:.2f}%`" if creator_balance_rate is not None else "Dev Sold: ❌"
+
     holders = top_buyers.get('holders', {})
     fresh_wallet_count = sum('fresh_wallet' in holder['tags'] for holder in holders.get('holderInfo', []))
     sniper_count = sum('sniper' in holder['maker_token_tags'] for holder in holders.get('holderInfo', []))
@@ -316,7 +318,7 @@ def generate_embed_fields(item, social_links, top_buyers, connected_wallets):
         f"🧠 Smart Traders: `{smart_trader_count}`\n"
         f"🔗 Connected Wallets: `{connected_wallets}` | {bubblemap_check}\n"
         f"⚡ Dex paid?: {'✅' if dex_paid else '❌'} | {dex_status_check} \n"
-        f"🧑‍💻 Dev Sold?: {dev_sold}\n"
+        f"🧑‍💻 {dev_status}\n"
         f"🫂 CTO?: {ctoflag}\n"
     )
 
