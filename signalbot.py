@@ -842,7 +842,7 @@ async def generate_embed_ca(item, topbuyers, socials, connected_wallets):
         elif item.get('creator_token_status') == "creator_hold":
             dev_status = f"Dev Holds: `{creator_balance_rate:.2f}%`"
         elif item.get('creator_token_status') == "creator_buy":
-            dev_status = "Dev Bought More: `{creator_balance_rate:.2f}%`"
+            dev_status = f"Dev Bought More:  `{creator_balance_rate:.2f}%`"
         else:
             dev_status = "Dev sold: ❌"
             
