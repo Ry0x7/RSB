@@ -307,7 +307,7 @@ async def generate_embed_fields(item, social_links, top_buyers, connected_wallet
     created_time_since = get_time_since_creation(item['created_timestamp']) if item.get('created_timestamp') else 'N/A'
     top_10_holder_rate = float(item.get('top_10_holder_rate')) * 100 if item.get('top_10_holder_rate') is not None else 0.0
     holder_count = item.get('holder_count', 'N/A')
-    volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))
+    volume_1m = format_large_number(int(float(item.get('volume_1m', 0.0) or 0.0)))
     dex_paid = item.get('dexscr_update_link', 0) == 1 or item.get('dexscr_ad', 0) == 1
     dev_sold = "✅" if item.get('creator_close', False) else "❌"
 
@@ -832,7 +832,7 @@ async def generate_embed_ca(item, topbuyers, socials, connected_wallets):
         market_cap = format_large_number(int(float(item.get('market_cap'))) if item.get('market_cap') else 'N/A')
         created_time_since = get_time_since_creation(item['creation_timestamp']) if item.get('creation_timestamp') else 'N/A'
         holder_count = item.get('holder_count', 'N/A')
-        volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))
+        volume_1m = format_large_number(int(float(item.get('volume_1m', 0.0) or 0.0)))
         dex_paid = item.get('dexscr_update_link', 0) == 1 or item.get('dexscr_ad', 0) == 1
         top_10_holder_rate = float(item.get('top_10_holder_rate')) * 100 if item.get('top_10_holder_rate') is not None else 0.0
         creator_balance = int(float(item.get('creator_balance', 0.00)))
