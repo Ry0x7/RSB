@@ -175,6 +175,35 @@ def filter_telegram_links(links, symbol, name):
             seen_links.add(link)
     return filtered_links
 
+async def check_dex_paid(address):
+    """Check if the DEX is paid for the given address using the new API."""
+    url = f"https://www.checkdex.xyz/api/checkToken?tokenAddress={address}"
+    headers = {
+        'accept': '*/*',
+        'accept-language': 'en-US,en;q=0.6',
+        'priority': 'u=1, i',
+        'referer': 'https://www.checkdex.xyz/',
+        'sec-ch-ua': '"Not)A;Brand";v="99", "Brave";v="127", "Chromium";v="127"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'sec-gpc': '1',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36'
+    }
+    try:
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get('paid', False)
+                else:
+                    logging.error(f"Error fetching DEX paid status: {response.status} {await response.text()}")
+    except aiohttp.ClientError as e:
+        logging.error(f"Request exception occurred: {e}")
+    return False
+
 async def fetch_wallet_counts(address):
     """Fetch wallet counts for the specified address."""
     url = f"{WALLET_COUNT_API_BASE_URL}{address}"
@@ -833,7 +862,6 @@ async def generate_embed_ca(item, topbuyers, socials, connected_wallets):
         created_time_since = get_time_since_creation(item['creation_timestamp']) if item.get('creation_timestamp') else 'N/A'
         holder_count = item.get('holder_count', 'N/A')
         volume_1m = format_large_number(int(float(item.get('volume_1m', 0.0) or 0.0)))
-        dex_paid = item.get('dexscr_update_link', 0) == 1 or item.get('dexscr_ad', 0) == 1
         top_10_holder_rate = float(item.get('top_10_holder_rate')) * 100 if item.get('top_10_holder_rate') is not None else 0.0
         creator_balance = int(float(item.get('creator_balance', 0.00)))
         creator_balance_rate = float(item.get('creator_percentage', 0.0)) * 100 if item.get('creator_percentage') is not None else 0.0
@@ -859,6 +887,10 @@ async def generate_embed_ca(item, topbuyers, socials, connected_wallets):
         telegram_field_value = " | ".join(telegram_links) if telegram_links else "No TG Found"
         logging.info(f"Telegram links for {item['name']} ({item['symbol']}: {telegram_field_value}")
         cto_flag = "✅" if telegram_links else "❌"
+        
+        # Use the new check_dex_paid function
+        dex_paid = await check_dex_paid(item['address'])
+        
         dex_status_check = f"[Check Status](https://www.checkdex.xyz/{item['address']})"
         bubblemap_check = f"[Bubblemap](https://app.bubblemaps.io/sol/token/{item['address']}?pumpfun=true)"
         
@@ -918,6 +950,7 @@ async def generate_embed_ca(item, topbuyers, socials, connected_wallets):
     except Exception as e:
         logging.error(f"Error in generate_embed_ca: {e}")
         return None
+
     
 @interactions.slash_command(
     name="ca",
