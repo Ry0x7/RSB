@@ -1,4 +1,4 @@
-import requests
+import aiohttp
 import logging
 import interactions
 import aiojobs
@@ -47,17 +47,39 @@ sent_messages = {}
 # Store the last volume check for each coin
 volume_check = {}
 
-def fetch_data(url):
+# Maximum number of concurrent tasks
+MAX_CONCURRENT_TASKS = 2
+
+async def fetch_data(url):
     """Fetch data from the specified URL."""
     logging.info(f"Fetching data from URL: {url}")
     try:
-        response = requests.get(url)
-        logging.info(f"Received response with status code: {response.status_code}")
-        if response.status_code == 200:
-            return response.json()
-        else:
-            logging.error(f"Error fetching data from {url}: {response.status_code} {response.text}")
-    except requests.exceptions.RequestException as e:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                logging.info(f"Received response with status code: {response.status}")
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    logging.error(f"Error fetching data from {url}: {response.status} {await response.text()}")
+    except aiohttp.ClientError as e:
+        logging.error(f"Request exception occurred: {e}")
+    return None
+
+async def fetch_data_waf_bypass(url):
+    """Fetch data from the specified URL with WAF bypass."""
+    logging.info(f"Fetching data from URL with WAF bypass: {url}")
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    try:
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.get(url) as response:
+                logging.info(f"Received response with status code: {response.status}")
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    logging.error(f"Error fetching data from {url}: {response.status} {await response.text()}")
+    except aiohttp.ClientError as e:
         logging.error(f"Request exception occurred: {e}")
     return None
 
@@ -99,7 +121,6 @@ def calculate_profit_percentage(called_mcap, current_mcap):
     else:
         return f"{change:.2f}%🔴"
 
-
 def is_similar(a, b, threshold=0.4):
     """Check if two strings are similar based on a threshold."""
     similarity = difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio()
@@ -114,29 +135,34 @@ def extract_telegram_links(text):
         formatted_links[full_link] = full_link.split('t.me/')[1].strip().lower()
     return formatted_links
 
-def fetch_telegram_links(address, symbol, name):
+async def fetch_telegram_links(address, symbol, name):
     """Fetch Telegram links from replies API and filter valid links."""
     url = f"{SEARCH_API_BASE_URL}replies/{address}"
-    data = fetch_data(url)
+    data = await fetch_data_waf_bypass(url)
     logging.info(f"Fetching Telegram links for address: {address}")
     if data:
         valid_links = set()
         for reply in data:
             links = extract_telegram_links(reply['text'])
+            # logging.info(f"Extracted Telegram links: {links}")
             for full_link, telegram_link in links.items():
                 try:
                     if any(sub in telegram_link for sub in ["cto"]) and \
-                       not telegram_link.startswith('+') and \
-                       telegram_link not in [
+                        not telegram_link.startswith('+') and \
+                        telegram_link not in [
                             'officialctowportal',
                             'solanaportalcto'
-                       ]:
+                        ]:
                         valid_links.add(full_link)
                 except IndexError:
                     logging.error(f"Error processing link: {full_link}")
         return filter_telegram_links(list(valid_links), symbol.lower(), name.lower())
-    logging.info("No valid data found for Telegram links.")
-    return []
+    elif data and data['code'] == 403:
+        logging.error("Access to replies API is forbidden.")
+        return None
+    else:
+        logging.info("No valid data found for Telegram links.")
+        return []
 
 def filter_telegram_links(links, symbol, name):
     """Filter Telegram links that contain the coin symbol or name as a substring or are similar."""
@@ -149,20 +175,20 @@ def filter_telegram_links(links, symbol, name):
             seen_links.add(link)
     return filtered_links
 
-def fetch_wallet_counts(address):
+async def fetch_wallet_counts(address):
     """Fetch wallet counts for the specified address."""
     url = f"{WALLET_COUNT_API_BASE_URL}{address}"
-    data = fetch_data(url)
+    data = await fetch_data(url)
     if data and data['code'] == 0:
         return data['data']
     else:
         logging.error(f"No valid data returned for wallet counts of address {address}")
     return None
 
-def fetch_top_buyers(address):
+async def fetch_top_buyers(address):
     """Fetch top buyers data for the specified address."""
     url = f"{TOP_BUYERS_API_BASE_URL}{address}"
-    data = fetch_data(url)
+    data = await fetch_data(url)
     logging.info(f"Fetching top buyers data for address: {address}")
     if data and data['code'] == 0:
         return data['data']
@@ -170,18 +196,16 @@ def fetch_top_buyers(address):
         logging.error(f"No valid data returned for top buyers of address {address}")
     return None
 
-# Function to fetch bubblemap data
-def fetch_bubblemap_data(address):
+async def fetch_bubblemap_data(address):
     """Fetch bubblemap data for the specified address."""
     url = f"https://europe-west1-cryptos-tools.cloudfunctions.net/get-bubble-graph-data?token={address}&chain=sol&pumpfun=true"
-    data = fetch_data(url)
+    data = await fetch_data(url)
     if data:
         return data
     else:
         logging.error(f"No valid data returned for bubblemap of address {address}")
     return None
 
-# Function to count connected wallets from bubblemap data
 def count_connected_wallets(bubblemap_data):
     """Count the number of connected wallets from the bubblemap data."""
     if not bubblemap_data:
@@ -203,7 +227,7 @@ def format_percentage(value):
         return "N/A"
     return f"{float(value) * 100:.2f}%"
 
-def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator="", ca_data=None):
+async def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator="", ca_data=None):
     """Format the embed message for the coin."""
     top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
     if top_10_holder_rate >= 40:
@@ -235,15 +259,15 @@ def format_embed(item, updated=False, trend="", percentage_change="", trend_indi
     else:
         # Add fields specific to send_coins
         social_links = get_social_links(item)
-        top_buyers = fetch_top_buyers(item['address'])
-        bubblemap_data = fetch_bubblemap_data(item['address'])
+        top_buyers = await fetch_top_buyers(item['address'])
+        bubblemap_data = await fetch_bubblemap_data(item['address'])
         connected_wallets = count_connected_wallets(bubblemap_data)
         
         if top_buyers is None:
             logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
             return None
         
-        embed_fields = generate_embed_fields(item, social_links, top_buyers, connected_wallets)
+        embed_fields = await generate_embed_fields(item, social_links, top_buyers, connected_wallets)
         for field_name, field_value in embed_fields.items():
             embed.add_field(name=field_name, value=field_value, inline=False)
             
@@ -276,7 +300,7 @@ def check_sniper_count(holders):
     sniper_count = sum('sniper' in holder['maker_token_tags'] for holder in holders['holderInfo'])
     return sniper_count > 3
 
-def generate_embed_fields(item, social_links, top_buyers, connected_wallets):
+async def generate_embed_fields(item, social_links, top_buyers, connected_wallets):
     """Generate the fields for the embed."""
     coin_info = f"```{item['address']}```\n{social_links}\n💊 **[Pump](https://pump.fun/{item['address']})**\n\n"
     market_cap = format_large_number(int(float(item['usd_market_cap'])) if item.get('usd_market_cap') else 'N/A')
@@ -300,7 +324,7 @@ def generate_embed_fields(item, social_links, top_buyers, connected_wallets):
     telegram_links = []
     telegram_field_value = "No TG Found"
     if dev_sold == "✅":
-        telegram_links = fetch_telegram_links(item['address'], item['symbol'], item['name'])
+        telegram_links = await fetch_telegram_links(item['address'], item['symbol'], item['name'])
         telegram_field_value = " | ".join(telegram_links) if telegram_links else "No TG Found"
         logging.info(f"Telegram links for {item['name']} ({item['symbol']}): {telegram_field_value}")
 
@@ -372,7 +396,7 @@ async def send_or_update_embed(channel, item, task_type):
         percentage_change, trend_indicator = calculate_percentage_change(previous_mcap, current_mcap)
         trend = "Blasting! 🚀" if current_mcap > previous_mcap else "Dipping! 💥" if current_mcap < previous_mcap else ""
         seen_coins[(item['name'], item['symbol'])]['market_cap'] = current_mcap
-    embed = format_embed(item, updated, trend, percentage_change, trend_indicator)
+    embed = await format_embed(item, updated, trend, percentage_change, trend_indicator)
     if not embed:
         return
     try:
@@ -432,8 +456,8 @@ async def send_coins(channel, task_type):
             'direction': 'desc',
             'soaring': 'true',
             'min_volume': '3000',
-            'min_marketcap': '9000',
-            'max_marketcap': '50000',
+            'min_marketcap': '8000',
+            'max_marketcap': '40000',
             'min_holder_count': '50',
             'max_created': '2h',
         },
@@ -442,7 +466,7 @@ async def send_coins(channel, task_type):
             'orderby': 'created_timestamp',
             'direction': 'asc',
             'new_creation': 'true',
-            'min_marketcap': '3800',
+            'min_marketcap': '3000',
             'max_marketcap': '9000',
             'min_holder_count': '5',
             'max_created': '6m',
@@ -458,7 +482,7 @@ async def send_coins(channel, task_type):
     }
     try:
         url = build_query_url(BASE_URL, params[task_type])
-        data = fetch_data(url)
+        data = await fetch_data(url)
         if data and data['data']['rank'] != last_data[channel_id][task_type]:
             last_data[channel_id][task_type] = data['data']['rank']
             valid_addresses = {item['address'] for item in data['data']['rank']}
@@ -467,17 +491,17 @@ async def send_coins(channel, task_type):
                 
                 # Check for duplicate tickers
                 if item['symbol'] in seen_tickers and seen_tickers[item['symbol']] != item['address']:
-                    logging.info(f"Skipping duplicate ticker: {item['symbol']}")
+                    # logging.info(f"Skipping duplicate ticker: {item['symbol']}")
                     continue
                 
                 # Check for 1-minute volume below 1000
                 volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))
                 if volume_1m < 500:
-                    logging.info(f"Skipping coin {item['name']} due to low 1-minute volume: {volume_1m}")
+                    # logging.info(f"Skipping coin {item['name']} due to low 1-minute volume: {volume_1m}")
                     continue
 
                 # Fetch top buyers data
-                top_buyers = fetch_top_buyers(item['address'])
+                top_buyers = await fetch_top_buyers(item['address'])
                 if top_buyers is None:
                     logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
                     continue
@@ -559,10 +583,10 @@ async def check_volume_movement():
                             volume_check[channel_id][task_type][address]['timestamp'] = datetime.now(tz=timezone.utc)
         await asyncio.sleep(120)
 
-def fetch_current_volume(address):
+async def fetch_current_volume(address):
     """Fetch the current volume for the given address."""
     url = f"{SEARCH_API_BASE_URL}{address}"
-    data = fetch_data(url)
+    data = await fetch_data(url)
     if data and 'data' in data and len(data['data']) > 0:
         return int(float(data['data'][0]['volume_1m']))
     else:
@@ -797,7 +821,7 @@ def get_socials(social_links):
     return " **∙** ".join(links)
 
 
-def generate_embed_ca(item, topbuyers, socials, connected_wallets):
+async def generate_embed_ca(item, topbuyers, socials, connected_wallets):
     try:
         # Prepare the data for the embed
         coin_info = f"```{item['address']}```\n"
@@ -812,16 +836,26 @@ def generate_embed_ca(item, topbuyers, socials, connected_wallets):
         dex_paid = item.get('dexscr_update_link', 0) == 1 or item.get('dexscr_ad', 0) == 1
         top_10_holder_rate = float(item.get('top_10_holder_rate')) * 100 if item.get('top_10_holder_rate') is not None else 0.0
         creator_balance = int(float(item.get('creator_balance', 0.00)))
-        creator_balance_rate = float(item.get('creator_balance_rate', 0.0)) * 100 if item.get('creator_balance_rate') is not None else 0.0
-        
+        creator_balance_rate = float(item.get('creator_percentage', 0.0)) * 100 if item.get('creator_percentage') is not None else 0.0
+        if item.get('creator_token_status') == "creator_close" or item.get('creator_close') == True:
+            dev_status = "Dev sold all: ✅"
+        elif item.get('creator_token_status') == "creator_hold":
+            dev_status = f"Dev Holds: `{creator_balance_rate:.2f}%`"
+        elif item.get('creator_token_status') == "creator_buy":
+            dev_status = "Dev Bought More: `{creator_balance_rate:.2f}%`"
+        else:
+            dev_status = "Dev sold: ❌"
+            
+        holder_rugged_num = item.get('holder_rugged_num', 0.0)
+        holder_token_num = item.get('holder_token_num', 0.0)
+
         holders = topbuyers.get('holders', {})
         fresh_wallet_count = sum('fresh_wallet' in holder['tags'] for holder in holders.get('holderInfo', []))
         sniper_count = sum('sniper' in holder['maker_token_tags'] for holder in holders.get('holderInfo', []))
         rat_trader_count = sum('rat_trader' in holder['maker_token_tags'] for holder in holders.get('holderInfo', []))
         smart_trader_count = sum('pump_smart' in holder['tags'] for holder in holders.get('holderInfo', []))
         
-        dev_status = "Dev Sold: ✅" if item.get('creator_close', False) else f"Dev Holds: `{creator_balance_rate:.2f}%`" if creator_balance_rate is not None else "Dev Sold: ❌"
-        telegram_links = fetch_telegram_links(item['address'], item['symbol'], item['name'])
+        telegram_links = await fetch_telegram_links(item['address'], item['symbol'], item['name'])
         telegram_field_value = " | ".join(telegram_links) if telegram_links else "No TG Found"
         logging.info(f"Telegram links for {item['name']} ({item['symbol']}: {telegram_field_value}")
         cto_flag = "✅" if telegram_links else "❌"
@@ -859,6 +893,7 @@ def generate_embed_ca(item, topbuyers, socials, connected_wallets):
             f"🔗 Connected Wallets: `{connected_wallets}` | {bubblemap_check}\n"
             f"⚡ Dex paid?: {'✅' if dex_paid else '❌'} | {dex_status_check} \n"
             f"🧑‍💻 {dev_status}\n"
+            f"⚠️ Deployed: `{holder_token_num}` | Rugged: {holder_rugged_num}\n"
             f"🫂 CTO?: {cto_flag}\n"
         )
         
@@ -878,7 +913,7 @@ def generate_embed_ca(item, topbuyers, socials, connected_wallets):
             'quicksnipe': quick_buy,
             'telegram_field_value': telegram_field_value
         }
-        embed = format_embed(item, ca_data=ca_data)
+        embed = await format_embed(item, ca_data=ca_data)
         return embed
     except Exception as e:
         logging.error(f"Error in generate_embed_ca: {e}")
@@ -902,15 +937,15 @@ async def ca(ctx, address: str):
         logging.info(f"Starting /ca command for address: {address}")
         await ctx.defer()
         url = f"{FETCH_COIN_DATA}{address}"
-        data = fetch_data(url)
+        data = await fetch_data(url)
         
         if data and 'data' in data and 'token' in data['data']:
             item = data['data']['token']
             coin_key = (item['name'], item['symbol'])
             name_dc = ctx.author.global_name
 
-            connected_wallets = count_connected_wallets(fetch_bubblemap_data(item['address']))
-            topbuyers = fetch_top_buyers(item['address'])
+            connected_wallets = count_connected_wallets(await fetch_bubblemap_data(item['address']))
+            topbuyers = await fetch_top_buyers(item['address'])
             socials = get_socials(item.get('social_links', {}))
 
             if coin_key not in seen_coins:
@@ -939,7 +974,7 @@ async def ca(ctx, address: str):
                     seen_coins[coin_key]['called_by']
                 )
             
-            embed = generate_embed_ca(item, topbuyers, socials, connected_wallets)
+            embed = await generate_embed_ca(item, topbuyers, socials, connected_wallets)
             if embed:
                 await ctx.send(embeds=[embed])
             else:
@@ -952,21 +987,22 @@ async def ca(ctx, address: str):
         logging.error(f"Error in ca command: {e}")
         await ctx.send(f"An error occurred while processing the request.")
 
-# Function to fetch seen_coins from the database
 def get_seen_coins():
+    """Fetch seen_coins from the database."""
     seen_coins = {}
     for coin in coins_collection.find({}):
         key = (coin['name'], coin['symbol'])
         seen_coins[key] = {
             'address': coin['address'],
             'called_mcap': coin['called_mcap'],
+            'market_cap': coin['market_cap'],
             'called_at': coin.get('called_at'),
             'called_by': coin.get('called_by')
         }
     return seen_coins
 
-# Function to update seen_coins in the database
 def update_seen_coin(name, symbol, address, called_mcap, market_cap, called_at, called_by):
+    """Update seen_coins in the database."""
     try:
         # Ensure called_at is a datetime object
         if isinstance(called_at, str):
