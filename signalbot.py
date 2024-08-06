@@ -893,7 +893,7 @@ async def generate_embed_ca(item, topbuyers, socials, connected_wallets):
             f"🔗 Connected Wallets: `{connected_wallets}` | {bubblemap_check}\n"
             f"⚡ Dex paid?: {'✅' if dex_paid else '❌'} | {dex_status_check} \n"
             f"🧑‍💻 {dev_status}\n"
-            f"⚠️ Deployed: `{holder_token_num}` | Rugged: {holder_rugged_num}\n"
+            f"⚠️ Deployed: `{holder_token_num}` | Rugged: `{holder_rugged_num}`\n"
             f"🫂 CTO?: {cto_flag}\n"
         )
         
