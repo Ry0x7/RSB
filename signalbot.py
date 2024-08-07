@@ -199,7 +199,7 @@ async def check_dex_paid(address):
                     data = await response.json()
                     return data.get('paid', False)
                 else:
-                    logging.error(f"Error fetching DEX paid status: {response.status} {await response.text()}")
+                    logging.warning(f"Error fetching DEX paid status: {response.status} {await response.text()}")
     except aiohttp.ClientError as e:
         logging.error(f"Request exception occurred: {e}")
     return False
@@ -889,6 +889,9 @@ async def generate_embed_ca(item, topbuyers, socials, connected_wallets):
         
         # Use the new check_dex_paid function
         dex_paid = await check_dex_paid(item['address'])
+        if dex_paid == 500:
+            logging.warning(f"Dex paid check failed for {item['address']}. Setting default value.")
+            dex_paid = False
         
         dex_status_check = f"[Check Status](https://www.checkdex.xyz/{item['address']})"
         bubblemap_check = f"[Bubblemap](https://app.bubblemaps.io/sol/token/{item['address']}?pumpfun=true)"
@@ -949,7 +952,6 @@ async def generate_embed_ca(item, topbuyers, socials, connected_wallets):
     except Exception as e:
         logging.error(f"Error in generate_embed_ca: {e}")
         return None
-
     
 @interactions.slash_command(
     name="ca",
