@@ -485,7 +485,7 @@ async def send_coins(channel, task_type):
             'direction': 'desc',
             'soaring': 'true',
             'min_volume': '3000',
-            'min_marketcap': '8000',
+            'min_marketcap': '9000',
             'max_marketcap': '40000',
             'min_holder_count': '50',
             'max_created': '2h',
@@ -495,7 +495,6 @@ async def send_coins(channel, task_type):
             'orderby': 'created_timestamp',
             'direction': 'asc',
             'new_creation': 'true',
-            'min_marketcap': '3000',
             'max_marketcap': '9000',
             'min_holder_count': '5',
             'max_created': '6m',
@@ -505,7 +504,7 @@ async def send_coins(channel, task_type):
             'orderby': 'usd_market_cap',
             'direction': 'desc',
             'pump': 'true',
-            'min_progress': '0.7',
+            'min_progress': '0.8',
             'max_created': '2h',
         }
     }
@@ -525,7 +524,7 @@ async def send_coins(channel, task_type):
                 
                 # Check for 1-minute volume below 1000
                 volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))
-                if volume_1m < 500:
+                if volume_1m < 800:
                     # logging.info(f"Skipping coin {item['name']} due to low 1-minute volume: {volume_1m}")
                     continue
 
