@@ -327,7 +327,7 @@ def check_sniper_count(holders):
     if 'holderInfo' not in holders:
         return False
     sniper_count = sum('sniper' in holder['maker_token_tags'] for holder in holders['holderInfo'])
-    return sniper_count > 3
+    return sniper_count > 4
 
 async def generate_embed_fields(item, social_links, top_buyers, connected_wallets):
     """Generate the fields for the embed."""
