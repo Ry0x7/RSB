@@ -226,7 +226,7 @@ async def fetch_top_buyers(address):
 async def fetch_bubblemap_data(address):
     """Fetch bubblemap data for the specified address."""
     url = f"https://europe-west1-cryptos-tools.cloudfunctions.net/get-bubble-graph-data?token={address}&chain=sol&pumpfun=true"
-    data = await fetch_data(url)
+    data = await fetch_data_waf_bypass(url)
     if data:
         return data
     else:
@@ -499,7 +499,8 @@ async def send_coins(channel, task_type, ctx):
             'direction': 'asc',
             'new_creation': 'true',
             'max_marketcap': '9000',
-            'max_created': '7m',
+            'min_holder_count': '4',
+            'max_created': '5m',
         },
         "completing": {
             'limit': '100',
