@@ -491,8 +491,8 @@ async def send_coins(channel, task_type, ctx):
     params = {
         "soaring": {
             'limit': '100',
-            'orderby': 'usd_market_cap',
-            'direction': 'asc',
+            'orderby': 'created_timestamp',
+            'direction': 'desc',
             'soaring': 'true',
             'min_volume': '3000',
             'min_marketcap': '9000',
