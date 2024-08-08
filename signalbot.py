@@ -231,7 +231,7 @@ async def fetch_bubblemap_data(address):
         return data
     else:
         logging.error(f"No valid data returned for bubblemap of address {address}")
-    return None
+    return "N/A"
 
 def count_connected_wallets(bubblemap_data):
     """Count the number of connected wallets from the bubblemap data."""
