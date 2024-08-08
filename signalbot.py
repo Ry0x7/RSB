@@ -401,7 +401,7 @@ async def generate_embed_fields(item, social_links, top_buyers, connected_wallet
         f"**[GmGn](https://gmgn.ai/sol/token/Sef3AuWIF_{item['address']})** ∙ "
         f"**[Photon](https://photon-sol.tinyastro.io/en/r/@rodent0x/{item['address']})** ∙ "
         f"**[Bull](https://bullx.io/terminal?chainId=1399811149&address={item['address']})** ∙ "
-        f"**[PepeB](https://t.me/pepeboost_sol04_bot?start={item['address']})** ∙ "
+        f"**[PepeB](https://t.me/pepeboost_sol04_bot?start=ref_01obi0_ca_{item['address']})** ∙ "
         f"**[Troj](https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']})**"
     )
 
@@ -936,7 +936,7 @@ async def generate_embed_ca(item, topbuyers, socials, connected_wallets, called_
             f"**[GmGn](https://gmgn.ai/sol/token/Sef3AuWIF_{item['address']})** ∙ "
             f"**[Photon](https://photon-sol.tinyastro.io/en/r/@rodent0x/{item['address']})** ∙ "
             f"**[Bull](https://bullx.io/terminal?chainId=1399811149&address={item['address']})** ∙ "
-            f"**[PepeB](https://t.me/pepeboost_sol04_bot?start={item['address']})** ∙ "
+            f"**[PepeB](https://t.me/pepeboost_sol04_bot?start=ref_01obi0_ca_{item['address']})** ∙ "
             f"**[Troj](https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']})**"
         )
             
