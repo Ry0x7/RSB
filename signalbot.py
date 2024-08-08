@@ -26,8 +26,6 @@ FETCH_COIN_DATA = 'https://gmgn.ai/defi/quotation/v1/tokens/sol/'
 MONGO_URI = os.getenv('MONGO_URI')
 mongo_client = pymongo.MongoClient(MONGO_URI)
 db = mongo_client['crypto_bot']
-coins_collection = db['coins']
-sessions_collection = db['sessions']
 
 # Store last data and seen coins/tickers
 last_data = {}
@@ -410,6 +408,9 @@ async def generate_embed_fields(item, social_links, top_buyers, connected_wallet
 
 async def send_or_update_embed(channel, item, task_type):
     """Send or update the embed message for the coin."""
+    guildname = channel.guild.name
+    coins_collection = db[f'coins_{guildname}']
+
     channel_id = channel.id
     if channel_id not in sent_messages:
         sent_messages[channel_id] = {"soaring": {}, "new": {}, "completing": {}}
@@ -471,9 +472,11 @@ async def delete_old_messages(channel, valid_addresses, task_type):
                 except interactions.errors.NotFound:
                     del sent_messages_task[address]
 
-async def send_coins(channel, task_type):
-    """Send coins information to the channel."""
+async def send_coins(channel, task_type, ctx):
     global last_data
+    guildname = channel.guild.name
+    coins_collection = db[f'coins_{guildname}']
+
     channel_id = channel.id
     if channel_id not in last_data:
         last_data[channel_id] = {"soaring": None, "new": None, "completing": None}
@@ -482,12 +485,12 @@ async def send_coins(channel, task_type):
         "soaring": {
             'limit': '100',
             'orderby': 'usd_market_cap',
-            'direction': 'desc',
+            'direction': 'asc',
             'soaring': 'true',
             'min_volume': '3000',
             'min_marketcap': '9000',
-            'max_marketcap': '40000',
-            'min_holder_count': '50',
+            'max_marketcap': '50000',
+            'min_holder_count': '40',
             'max_created': '2h',
         },
         "new": {
@@ -496,8 +499,7 @@ async def send_coins(channel, task_type):
             'direction': 'asc',
             'new_creation': 'true',
             'max_marketcap': '9000',
-            'min_holder_count': '5',
-            'max_created': '6m',
+            'max_created': '7m',
         },
         "completing": {
             'limit': '100',
@@ -519,13 +521,11 @@ async def send_coins(channel, task_type):
                 
                 # Check for duplicate tickers
                 if item['symbol'] in seen_tickers and seen_tickers[item['symbol']] != item['address']:
-                    # logging.info(f"Skipping duplicate ticker: {item['symbol']}")
                     continue
                 
                 # Check for 1-minute volume below 1000
                 volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))
                 if volume_1m < 800:
-                    # logging.info(f"Skipping coin {item['name']} due to low 1-minute volume: {volume_1m}")
                     continue
 
                 # Fetch top buyers data
@@ -540,7 +540,7 @@ async def send_coins(channel, task_type):
                     continue
 
                 # Check if the coin was already called by the bot
-                called_by = "Rodent Signal Bot"
+                called_by = ctx.bot.user.username
                 if coin_key not in seen_coins:
                     seen_coins[coin_key] = {
                         'address': item['address'],
@@ -555,7 +555,8 @@ async def send_coins(channel, task_type):
                         int(float(item['usd_market_cap'])),
                         int(float(item['usd_market_cap'])),
                         datetime.now(tz=timezone.utc),
-                        called_by
+                        called_by,
+                        guildname
                     )
                 else:
                     seen_coins[coin_key]['market_cap'] = int(float(item['usd_market_cap']))
@@ -564,16 +565,12 @@ async def send_coins(channel, task_type):
                         seen_coins[coin_key]['called_mcap'],
                         seen_coins[coin_key]['market_cap'],
                         seen_coins[coin_key]['called_at'],
-                        seen_coins[coin_key]['called_by']
+                        seen_coins[coin_key]['called_by'],
+                        guildname
                     )
                 
                 await send_or_update_embed(channel, item, task_type)
             await delete_old_messages(channel, valid_addresses, task_type)
-            sessions_collection.update_one(
-                {'channel_id': channel.id, 'task_type': task_type},
-                {'$set': {'valid_addresses': list(valid_addresses)}},
-                upsert=True
-            )
     except Exception as e:
         logging.error(f"Error in send_coins: {e}")
 
@@ -640,18 +637,13 @@ async def delete_message(channel, address, task_type):
 async def on_ready():
     """Event handler for when the bot is ready."""
     logging.info(f'Bot logged in as {bot.me.name}')
-    await resume_sessions()
+
+    # Load seen_coins from the database on startup
+    for guild in await bot.fetch_guilds().flatten():
+        seen_coins.update(get_seen_coins(guild.name))
+
     asyncio.create_task(monitor_tasks())
     asyncio.create_task(check_volume_movement())
-
-async def resume_sessions():
-    """Resume active sessions from the database."""
-    active_sessions = sessions_collection.find({})
-    for session in active_sessions:
-        channel = await bot.fetch_channel(session['channel_id'])
-        task_type = session['task_type']
-        valid_addresses = set(session['valid_addresses'])
-        running_tasks[session['channel_id']] = await aiojobs.create_scheduler().spawn(loop_send_coins(channel, task_type, valid_addresses))
 
 async def admin_command(ctx):
     """Check if the user has admin permissions."""
@@ -670,7 +662,7 @@ async def start_task(ctx, task_type):
             return
     await ctx.send(f'Grabbing {task_type.capitalize()} Coins for the BAGSS! 👜', ephemeral=True)
     scheduler = await aiojobs.create_scheduler()
-    task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type))
+    task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type, ctx))
     if ctx.channel.id not in running_tasks:
         running_tasks[ctx.channel.id] = {}
     running_tasks[ctx.channel.id][task_type] = task
@@ -788,6 +780,9 @@ async def reboot(ctx):
 )
 async def leaderboard(ctx):
     try:
+        guildname = ctx.guild.name
+        coins_collection = db[f'coins_{guildname}']
+
         coins = coins_collection.find({'called_mcap': {'$gte': 55000}})
         
         leaderboard_data = []
@@ -812,11 +807,11 @@ async def leaderboard(ctx):
     except Exception as e:
         logging.error(f"Error in leaderboard command: {e}")
 
-async def loop_send_coins(channel, task_type):
+async def loop_send_coins(channel, task_type, ctx):
     """Loop to continuously send coin information."""
     while True:
         try:
-            await send_coins(channel, task_type)
+            await send_coins(channel, task_type, ctx)
         except Exception as e:
             logging.error(f"Error in loop_send_coins for {task_type}: {e}")
         await asyncio.sleep(3)
@@ -849,7 +844,7 @@ def get_socials(social_links):
     return " **∙** ".join(links)
 
 
-async def generate_embed_ca(item, topbuyers, socials, connected_wallets):
+async def generate_embed_ca(item, topbuyers, socials, connected_wallets, called_by):
     try:
         # Prepare the data for the embed
         coin_info = f"```{item['address']}```\n"
@@ -884,7 +879,7 @@ async def generate_embed_ca(item, topbuyers, socials, connected_wallets):
         
         telegram_links = await fetch_telegram_links(item['address'], item['symbol'], item['name'])
         telegram_field_value = " | ".join(telegram_links) if telegram_links else "No TG Found"
-        logging.info(f"Telegram links for {item['name']} ({item['symbol']}: {telegram_field_value}")
+        logging.info(f"Telegram links for {item['name']} ({item['symbol']}): {telegram_field_value}")
         cto_flag = "✅" if telegram_links else "❌"
         
         # Use the new check_dex_paid function
@@ -896,15 +891,13 @@ async def generate_embed_ca(item, topbuyers, socials, connected_wallets):
         dex_status_check = f"[Check Status](https://www.checkdex.xyz/{item['address']})"
         bubblemap_check = f"[Bubblemap](https://app.bubblemaps.io/sol/token/{item['address']}?pumpfun=true)"
         
-        called_mcap = format_large_number(seen_coins[(item['name'], item['symbol'])]['called_mcap'])
-        called_at = seen_coins[(item['name'], item['symbol'])]['called_at']
-        called_by = seen_coins[(item['name'], item['symbol'])]['called_by']
+        called_mcap = format_large_number(seen_coins[(item['name'], item['symbol'], item['address'])]['called_mcap'])
+        called_at = seen_coins[(item['name'], item['symbol'], item['address'])]['called_at']
         
         if isinstance(called_at, str):
             called_at = datetime.strptime(called_at, "%I:%M %p %b %d")
-        # Format the called_at datetime to 12-hour format with AM/PM
         called_at_formatted = called_at.strftime("%I:%M %p %b %d")
-        profit_percentage = calculate_profit_percentage(seen_coins[(item['name'], item['symbol'])]['called_mcap'], int(float(item['market_cap'])))
+        profit_percentage = calculate_profit_percentage(seen_coins[(item['name'], item['symbol'], item['address'])]['called_mcap'], int(float(item['market_cap'])))
 
         field_value = (
             f"💎 **MCAP:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
@@ -952,6 +945,7 @@ async def generate_embed_ca(item, topbuyers, socials, connected_wallets):
     except Exception as e:
         logging.error(f"Error in generate_embed_ca: {e}")
         return None
+
     
 @interactions.slash_command(
     name="ca",
@@ -972,17 +966,23 @@ async def ca(ctx, address: str):
         await ctx.defer()
         url = f"{FETCH_COIN_DATA}{address}"
         data = await fetch_data(url)
-        
+
         if data and 'data' in data and 'token' in data['data']:
             item = data['data']['token']
-            coin_key = (item['name'], item['symbol'])
+            coin_key = (item['name'], item['symbol'], item['address'])
             name_dc = ctx.author.global_name
 
             connected_wallets = count_connected_wallets(await fetch_bubblemap_data(item['address']))
             topbuyers = await fetch_top_buyers(item['address'])
             socials = get_socials(item.get('social_links', {}))
 
-            if coin_key not in seen_coins:
+            guildname = ctx.guild.name
+            coins_collection = db[f'coins_{guildname}']  # Define coins_collection based on the guild name
+
+            # Check if the coin is already in seen_coins and in the database
+            existing_coin = coins_collection.find_one({'address': item['address']})
+
+            if coin_key not in seen_coins and not existing_coin:
                 seen_coins[coin_key] = {
                     'address': item['address'],
                     'called_mcap': int(float(item['market_cap'])),
@@ -996,19 +996,23 @@ async def ca(ctx, address: str):
                     int(float(item['market_cap'])),
                     int(float(item['market_cap'])),
                     datetime.now(tz=timezone.utc),
-                    name_dc
+                    name_dc,
+                    guildname
                 )
+                called_by = name_dc
             else:
-                seen_coins[coin_key]['market_cap'] = int(float(item['market_cap']))
-                update_seen_coin(
-                    item['name'], item['symbol'], item['address'],
-                    seen_coins[coin_key]['called_mcap'],
-                    seen_coins[coin_key]['market_cap'],
-                    seen_coins[coin_key]['called_at'],
-                    seen_coins[coin_key]['called_by']
-                )
-            
-            embed = await generate_embed_ca(item, topbuyers, socials, connected_wallets)
+                if existing_coin:
+                    seen_coins[coin_key] = {
+                        'address': item['address'],
+                        'called_mcap': existing_coin['called_mcap'],
+                        'market_cap': int(float(item['market_cap'])),
+                        'called_at': existing_coin['called_at'],
+                        'called_by': existing_coin['called_by']
+                    }
+                called_by = seen_coins[coin_key]['called_by']
+
+            logging.info(f"Called by: {called_by}")
+            embed = await generate_embed_ca(item, topbuyers, socials, connected_wallets, called_by)
             if embed:
                 await ctx.send(embeds=[embed])
             else:
@@ -1021,11 +1025,13 @@ async def ca(ctx, address: str):
         logging.error(f"Error in ca command: {e}")
         await ctx.send(f"An error occurred while processing the request.")
 
-def get_seen_coins():
+
+def get_seen_coins(guildname):
     """Fetch seen_coins from the database."""
+    coins_collection = db[f'coins_{guildname}']
     seen_coins = {}
     for coin in coins_collection.find({}):
-        key = (coin['name'], coin['symbol'])
+        key = (coin['name'], coin['symbol'], coin['address'])
         seen_coins[key] = {
             'address': coin['address'],
             'called_mcap': coin['called_mcap'],
@@ -1035,8 +1041,10 @@ def get_seen_coins():
         }
     return seen_coins
 
-def update_seen_coin(name, symbol, address, called_mcap, market_cap, called_at, called_by):
+def update_seen_coin(name, symbol, address, called_mcap, market_cap, called_at, called_by, guildname):
     """Update seen_coins in the database."""
+    coins_collection = db[f'coins_{guildname}']
+
     try:
         # Ensure called_at is a datetime object
         if isinstance(called_at, str):
@@ -1044,17 +1052,20 @@ def update_seen_coin(name, symbol, address, called_mcap, market_cap, called_at, 
 
         # Format the called_at datetime to 12-hour format with AM/PM
         called_at_formatted = called_at.strftime("%I:%M %p %b %d")
-        
+
+        # Prepare the update data
+        update_data = {
+            'name': name,
+            'symbol': symbol,
+            'called_mcap': called_mcap,
+            'market_cap': market_cap,
+            'called_at': called_at_formatted,
+            'called_by': called_by
+        }
+
         coins_collection.update_one(
             {'address': address},
-            {'$set': {
-                'name': name,
-                'symbol': symbol,
-                'called_mcap': called_mcap,
-                'market_cap': market_cap,
-                'called_at': called_at_formatted,
-                'called_by': called_by
-            }},
+            {'$set': update_data},
             upsert=True
         )
     except ValueError as e:
@@ -1072,6 +1083,9 @@ def update_seen_coin(name, symbol, address, called_mcap, market_cap, called_at, 
             upsert=True
         )
 
-# Load seen_coins from the database on startup
-seen_coins = get_seen_coins()
+
+
+
+# Start the bot
 bot.start()
+
