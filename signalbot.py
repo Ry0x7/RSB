@@ -226,11 +226,18 @@ async def fetch_top_buyers(address):
 async def fetch_bubblemap_data(address):
     """Fetch bubblemap data for the specified address."""
     url = f"https://europe-west1-cryptos-tools.cloudfunctions.net/get-bubble-graph-data?token={address}&chain=sol&pumpfun=true"
-    data = await fetch_data_waf_bypass(url)
-    if data:
-        return data
-    else:
-        logging.error(f"No valid data returned for bubblemap of address {address}")
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=5) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data
+                elif response.status == 500:
+                    logging.error(f"Server error occurred while fetching bubblemap data for address {address}")
+                else:
+                    logging.error(f"Unexpected response status {response.status} while fetching bubblemap data for address {address}")
+    except aiohttp.ClientError as e:
+        logging.error(f"Request exception occurred: {e}")
     return "N/A"
 
 def count_connected_wallets(bubblemap_data):
