@@ -501,13 +501,14 @@ async def send_coins(channel, task_type, ctx):
             'max_created': '2h',
         },
         "new": {
-            'limit': '100',
+            'limit': '50',
             'orderby': 'created_timestamp',
-            'direction': 'asc',
-            'new_creation': 'true',
+            'direction': 'desc',
+            'soaring': 'true',
+            'min_volume': '500',
             'max_marketcap': '9000',
-            'min_holder_count': '4',
-            'max_created': '5m',
+            'min_progress': '0.05',
+            'max_created': '10m',
         },
         "completing": {
             'limit': '100',
@@ -533,7 +534,8 @@ async def send_coins(channel, task_type, ctx):
                 
                 # Check for 1-minute volume below 1000
                 volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))
-                if volume_1m < 800:
+                if volume_1m < 1800:
+                    # logging.info(f"Token {item['address']} has low volume. Skipping.")
                     continue
 
                 # Fetch top buyers data
