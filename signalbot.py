@@ -491,7 +491,6 @@ async def send_coins(channel, task_type, ctx):
             'orderby': 'created_timestamp',
             'direction': 'desc',
             'soaring': 'true',
-            'min_volume': '3000',
             'min_marketcap': '9000',
             'max_marketcap': '50000',
             'min_holder_count': '40',
@@ -502,7 +501,6 @@ async def send_coins(channel, task_type, ctx):
             'orderby': 'created_timestamp',
             'direction': 'desc',
             'soaring': 'true',
-            'min_volume': '500',
             'max_marketcap': '9000',
             'min_progress': '0.05',
             'max_created': '10m',
@@ -529,15 +527,16 @@ async def send_coins(channel, task_type, ctx):
                 if item['symbol'] in seen_tickers and seen_tickers[item['symbol']] != item['address']:
                     continue
                 
-                # Check for 1-minute volume below 1000
+                # Conditional filtering based on task_type
                 volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))
-                if volume_1m < 1800:
-                    # logging.info(f"Token {item['address']} has low volume. Skipping.")
-                    continue
-
-                top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
-                if top_10_holder_rate >= 40:
-                    return None
+                
+                if task_type == "new" and volume_1m < 2000:
+                    continue  # Skip if volume is below 1000 for new coins
+                elif task_type == "soaring" and volume_1m < 1500:
+                    continue  # Skip if volume is below 3000 for soaring coins
+                elif task_type == "completing" and volume_1m < 1000:
+                    continue  # Skip if volume is below 5000 for completing coins
+                
                 # Fetch top buyers data
                 top_buyers = await fetch_top_buyers(item['address'])
                 if top_buyers is None:
@@ -583,6 +582,7 @@ async def send_coins(channel, task_type, ctx):
             await delete_old_messages(channel, valid_addresses, task_type)
     except Exception as e:
         logging.error(f"Error in send_coins: {e}")
+
 
 def build_query_url(base_url, params):
     """Build query URL from the base URL and parameters."""
