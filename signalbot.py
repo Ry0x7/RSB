@@ -263,9 +263,6 @@ def format_percentage(value):
 
 async def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator="", ca_data=None):
     """Format the embed message for the coin."""
-    top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
-    if top_10_holder_rate >= 40:
-        return None
     embed_title = f"🪙 {item['name']} (${item['symbol']})"
     trendcoin = f"**{trend}** | `{percentage_change}{trend_indicator}`" if updated else ""
     embed = interactions.Embed(title=trendcoin, color=0x00ff00)
@@ -538,6 +535,9 @@ async def send_coins(channel, task_type, ctx):
                     # logging.info(f"Token {item['address']} has low volume. Skipping.")
                     continue
 
+                top_10_holder_rate = float(item['top_10_holder_rate']) * 100 if item['top_10_holder_rate'] is not None else 0.0
+                if top_10_holder_rate >= 40:
+                    return None
                 # Fetch top buyers data
                 top_buyers = await fetch_top_buyers(item['address'])
                 if top_buyers is None:
