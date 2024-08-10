@@ -9,11 +9,14 @@ import os
 import pymongo
 import difflib
 import re
+import random
+from interactions import listen, Client
+
 
 dotenv.load_dotenv()
 
 # Initialize the Discord bot
-bot = interactions.Client(token=os.getenv('DISCORD_TOKEN'))
+bot = Client(token=os.getenv('DISCORD_TOKEN'))
 
 # Define API URLs
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
@@ -32,9 +35,6 @@ last_data = {}
 seen_coins = {}
 seen_tickers = {}
 
-# Set owner username for admin commands
-owner_username = "chakazzz"
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
@@ -47,6 +47,30 @@ volume_check = {}
 
 # Maximum number of concurrent tasks
 MAX_CONCURRENT_TASKS = 2
+
+# List of possible footers
+footer_messages = [
+    "For business inquiries, DM @chakazzz 👑",
+    "Crypto tracking by your favorite bot 🔍",
+    "Stay updated with the latest trends 🌐",
+    "Monitoring the crypto universe 🌌",
+    "Data accuracy is our priority 📈",
+    "Powered by your friendly neighborhood bot 🤖",
+    "Want this bot in your server? DM @chakazzz 👑",
+    "Nothing is more important than data accuracy 📊",
+    "For the best signals, DM @chakazzz 👑"
+]
+
+status_messages = [
+    "Watching the market 🚀",
+    "Tracking crypto trends 📊",
+    "Monitoring wallets 👀",
+    "Fetching the latest data 🧠",
+    "Analyzing market caps 💹",
+    "Checking for new coins 🪙",
+    "Want the best signals? DM @chakazzz 👑"
+]
+
 
 async def fetch_data(url):
     """Fetch data from the specified URL."""
@@ -63,23 +87,30 @@ async def fetch_data(url):
         logging.error(f"Request exception occurred: {e}")
     return None
 
-async def fetch_data_waf_bypass(url):
-    """Fetch data from the specified URL with WAF bypass."""
+async def fetch_data_waf_bypass(url, retries=3, timeout=10):
+    """Fetch data from the specified URL with WAF bypass, retry logic, and timeout."""
     logging.info(f"Fetching data from URL with WAF bypass: {url}")
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
-    try:
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(url) as response:
-                logging.info(f"Received response with status code: {response.status}")
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    logging.error(f"Error fetching data from {url}: {response.status} {await response.text()}")
-    except aiohttp.ClientError as e:
-        logging.error(f"Request exception occurred: {e}")
+    for attempt in range(retries):
+        try:
+            async with aiohttp.ClientSession(headers=headers) as session:
+                async with session.get(url, timeout=timeout) as response:
+                    logging.info(f"Received response with status code: {response.status}")
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        logging.error(f"Error fetching data from {url}: {response.status} {await response.text()}")
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            logging.error(f"Request exception occurred: {e}")
+            if attempt < retries - 1:
+                logging.info(f"Retrying... ({attempt + 1}/{retries})")
+                await asyncio.sleep(2)  # Optional: wait a bit before retrying
+            else:
+                logging.error(f"Failed to fetch data after {retries} attempts.")
     return None
+
 
 def get_time_since_creation(created_timestamp):
     """Calculate the time since the coin was created."""
@@ -302,7 +333,8 @@ async def format_embed(item, updated=False, trend="", percentage_change="", tren
         for field_name, field_value in embed_fields.items():
             embed.add_field(name=field_name, value=field_value, inline=False)
             
-    embed.set_footer (text="❕For business inquiry DM/Add 👑@chakazzz")
+    random_footer = random.choice(footer_messages)
+    embed.set_footer(text=random_footer)
     return embed
 
 def get_social_links(item):
@@ -399,7 +431,8 @@ async def generate_embed_fields(item, social_links, top_buyers, connected_wallet
         f"**[Photon](https://photon-sol.tinyastro.io/en/r/@rodent0x/{item['address']})** ∙ "
         f"**[Bull](https://bullx.io/terminal?chainId=1399811149&address={item['address']})** ∙ "
         f"**[PepeB](https://t.me/pepeboost_sol04_bot?start=ref_01obi0_ca_{item['address']})** ∙ "
-        f"**[Troj](https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']})**"
+        f"**[Troj](https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']})** ∙ "
+        f"**[Fasol](https://t.me/fasol_robot?start=ref_rodent0x_ca_{item['address']})**"
     )
 
     return {
@@ -620,10 +653,10 @@ async def check_volume_movement():
 
 async def fetch_current_volume(address):
     """Fetch the current volume for the given address."""
-    url = f"{SEARCH_API_BASE_URL}{address}"
+    url = f"{FETCH_COIN_DATA}{address}"
     data = await fetch_data(url)
-    if data and 'data' in data and len(data['data']) > 0:
-        return int(float(data['data'][0]['volume_1m']))
+    if data and 'data' in data and 'token' in data['data'] and len(data['data']['token']) > 0:
+        return int(float(data['data']['token'][0]['volume_1m']))
     else:
         logging.error(f"No valid data returned for address {address}")
     return None
@@ -643,23 +676,70 @@ async def delete_message(channel, address, task_type):
             del sent_messages[channel_id][task_type][address]
             del volume_check[channel_id][task_type][address]
 
-@bot.event
+@listen()
 async def on_ready():
     """Event handler for when the bot is ready."""
-    logging.info(f'Bot logged in as {bot.me.name}')
+    # Access the bot's user information
+    bot_user = bot.user
+
+    # Log the bot's username
+    logging.info(f'Bot logged in as {bot_user.username}')
+
+    # Set a random bot status from the predefined status messages
+    random_status = random.choice(status_messages)
+    await bot.change_presence(
+        activity=interactions.Activity(
+            name=random_status,
+            type=interactions.ActivityType.WATCHING
+        ),
+        status=interactions.Status.ONLINE
+    )
 
     # Load seen_coins from the database on startup
-    for guild in await bot.fetch_guilds().flatten():
+    for guild in bot.guilds:
         seen_coins.update(get_seen_coins(guild.name))
 
+    # Start background tasks
     asyncio.create_task(monitor_tasks())
     asyncio.create_task(check_volume_movement())
-
+    
+    
+async def change_status_loop():
+    """Loop to change the bot's status every minute."""
+    while True:
+        logging.info("Changing status...")
+        random_status = random.choice(status_messages)
+        logging.info(f"Selected status: {random_status}")
+        try:
+            await bot.change_presence(
+                activity=interactions.Activity(
+                    name=random_status, 
+                    type=interactions.ActivityType.WATCHING
+                ),
+                status=interactions.StatusType.ONLINE
+            )
+            logging.info(f"Presence successfully set to: {random_status}")
+        except Exception as e:
+            logging.error(f"Failed to change presence: {e}")
+        
+        logging.info("Sleeping for 60 seconds.")
+        await asyncio.sleep(60)  # Delay for 1 minute (60 seconds)
+        
 async def admin_command(ctx):
     """Check if the user has admin permissions."""
-    guild = await bot.fetch_guild(ctx.guild_id)
+    owner_id = "239243874529312768"  # Replace with the actual owner ID
+    guild = ctx.guild  # Ensure this command is used in a guild
+
+    if guild is None:
+        return False  # Return False if not in a guild (e.g., in a DM)
+
     member = await guild.fetch_member(ctx.author.id)
-    return ctx.author.username == owner_username or member.permissions.has(interactions.Permissions.MANAGE_GUILD | interactions.Permissions.MANAGE_CHANNELS)
+
+    # Check if the user is the owner or has Manage Guild or Administrator permissions
+    if ctx.author.id == int(owner_id) or member.permissions & (interactions.Permissions.MANAGE_GUILD | interactions.Permissions.ADMINISTRATOR):
+        return True
+
+    return False
 
 async def start_task(ctx, task_type):
     """Start a task to send coin information."""
@@ -681,7 +761,7 @@ async def start_task(ctx, task_type):
 @interactions.slash_command(
     name="soaring",
     description="Start sending soaring coin information.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD | interactions.Permissions.MANAGE_CHANNELS,
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
     dm_permission=False
 )
 async def soaring(ctx):
@@ -690,7 +770,7 @@ async def soaring(ctx):
 @interactions.slash_command(
     name="completing",
     description="Start sending completing coin information.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD | interactions.Permissions.MANAGE_CHANNELS,
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
     dm_permission=False
 )
 async def completing(ctx):
@@ -699,7 +779,7 @@ async def completing(ctx):
 @interactions.slash_command(
     name="new",
     description="Start sending newly created coin information.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD | interactions.Permissions.MANAGE_CHANNELS,
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
     dm_permission=False
 )
 async def new(ctx):
@@ -708,7 +788,7 @@ async def new(ctx):
 @interactions.slash_command(
     name="stop",
     description="Stop sending token information.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD | interactions.Permissions.MANAGE_CHANNELS,
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
     dm_permission=False
 )
 async def stop(ctx):
@@ -737,7 +817,7 @@ async def stop(ctx):
 @interactions.slash_command(
     name="clear",
     description="Clear all messages from this channel.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD | interactions.Permissions.MANAGE_CHANNELS,
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
     dm_permission=False
 )
 async def clear(ctx):
@@ -757,7 +837,7 @@ async def clear(ctx):
 @interactions.slash_command(
     name="reboot",
     description="Reboot the coin information sending loops.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD | interactions.Permissions.MANAGE_CHANNELS,
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
     dm_permission=False
 )
 async def reboot(ctx):
@@ -830,13 +910,22 @@ async def monitor_tasks():
     """Monitor tasks to ensure they are running."""
     while True:
         for channel_id, task_data in list(running_tasks.items()):
-            for task_type, task in task_data.items():
-                if task.done():
-                    logging.warning(f"Task for channel {channel_id} has stopped. Restarting {task_type} task...")
+            for task_type, job in task_data.items():
+                try:
+                    # If job is cancelled or finished, it will raise an exception
+                    await job.wait()
+                except asyncio.CancelledError:
+                    logging.warning(f"Task for channel {channel_id} was cancelled. Restarting {task_type} task...")
+                    channel = await bot.fetch_channel(channel_id)
+                    new_task = await aiojobs.create_scheduler().spawn(loop_send_coins(channel, task_type))
+                    running_tasks[channel_id][task_type] = new_task
+                except Exception as e:
+                    logging.warning(f"Task for channel {channel_id} encountered an error: {e}")
                     channel = await bot.fetch_channel(channel_id)
                     new_task = await aiojobs.create_scheduler().spawn(loop_send_coins(channel, task_type))
                     running_tasks[channel_id][task_type] = new_task
         await asyncio.sleep(60)
+
 
 def get_socials(social_links):
     """Generate social media links for the embed."""
@@ -939,7 +1028,8 @@ async def generate_embed_ca(item, topbuyers, socials, connected_wallets, called_
             f"**[Photon](https://photon-sol.tinyastro.io/en/r/@rodent0x/{item['address']})** ∙ "
             f"**[Bull](https://bullx.io/terminal?chainId=1399811149&address={item['address']})** ∙ "
             f"**[PepeB](https://t.me/pepeboost_sol04_bot?start=ref_01obi0_ca_{item['address']})** ∙ "
-            f"**[Troj](https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']})**"
+            f"**[Troj](https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']})** ∙ "
+            f"**[Fasol](https://t.me/fasol_robot?start=ref_rodent0x_ca_{item['address']})**"
         )
             
         ca_data = {
@@ -1092,9 +1182,6 @@ def update_seen_coin(name, symbol, address, called_mcap, market_cap, called_at, 
             }},
             upsert=True
         )
-
-
-
 
 # Start the bot
 bot.start()
