@@ -568,11 +568,11 @@ async def send_coins(channel, task_type, ctx):
                 # Conditional filtering based on task_type
                 volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))
                 
-                if task_type == "new" and volume_1m < 2000:
+                if task_type == "new" and volume_1m < 1800:
                     continue  # Skip if volume is below 1000 for new coins
                 elif task_type == "soaring" and volume_1m < 1500:
                     continue  # Skip if volume is below 3000 for soaring coins
-                elif task_type == "completing" and volume_1m < 1000:
+                elif task_type == "completing" and volume_1m < 800:
                     continue  # Skip if volume is below 5000 for completing coins
                 
                 # Fetch top buyers data
@@ -607,6 +607,10 @@ async def send_coins(channel, task_type, ctx):
                     )
                 else:
                     seen_coins[coin_key]['market_cap'] = int(float(item['usd_market_cap']))
+                    # Only update 'called_by' if it's not already set
+                    existing_called_by = seen_coins[coin_key].get('called_by')
+                    if not existing_called_by:
+                        seen_coins[coin_key]['called_by'] = called_by
                     update_seen_coin(
                         item['name'], item['symbol'], item['address'],
                         seen_coins[coin_key]['called_mcap'],
