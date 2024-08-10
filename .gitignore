@@ -1,6 +1,7 @@
 # Ignore coins.db
 coins.db
-
+session_name.session
 # Ignore .env file
 .env
 .venv
+.session

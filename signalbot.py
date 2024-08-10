@@ -11,6 +11,9 @@ import difflib
 import re
 import random
 from interactions import listen, Client
+from telethon import TelegramClient, events
+from telethon.errors.rpcerrorlist import RpcCallFailError
+
 
 
 dotenv.load_dotenv()
@@ -30,6 +33,12 @@ MONGO_URI = os.getenv('MONGO_URI')
 mongo_client = pymongo.MongoClient(MONGO_URI)
 db = mongo_client['crypto_bot']
 
+# Telegram API credentials
+api_id = os.getenv('TELEGRAM_API_ID')
+api_hash = os.getenv('TELEGRAM_API_HASH')
+
+# Create a Telegram Client
+telegram_client = TelegramClient('session_name', api_id, api_hash)
 # Store last data and seen coins/tickers
 last_data = {}
 seen_coins = {}
@@ -44,6 +53,8 @@ sent_messages = {}
 
 # Store the last volume check for each coin
 volume_check = {}
+processed_message_ids = set()
+last_message_time = None
 
 # Maximum number of concurrent tasks
 MAX_CONCURRENT_TASKS = 2
@@ -1100,7 +1111,220 @@ async def ca(ctx, address: str):
         logging.error(f"Error in ca command: {e}")
         await ctx.send(f"An error occurred while processing the request.")
 
+def extract_contract_address(message_text):
+    # Simplified regex to scrape everything inside the backticks following 'CA:'
+    start = message_text.find('🎲CA:')
+    if start != -1:
+        start = message_text.find(' ', start)
+        end = message_text.find('\n\n', start + 1)
+        if start != -1 and end != -1:
+            return message_text[start + 1:end]
+    return None
 
+@interactions.slash_command(
+    name="dexsignals",
+    description="Start sending signals from the DEX Paid Coins",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False,
+    options=[
+        {
+            "name": "role",
+            "description": "The role to mention in the alerts.",
+            "type": interactions.OptionType.ROLE,
+            "required": False  # Make this option optional
+        }
+    ]
+)
+async def dexsignals(ctx, role: interactions.Role = None):
+    try:
+        if not await admin_command(ctx):
+            await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+            return
+
+        await ctx.send('Scanning for DEX Paid Pump signals...', ephemeral=True)
+
+        # Start the loop to scrape and send messages, pass the role to the function
+        await scrape_and_send_telegram_messages(ctx, role)
+
+    except Exception as e:
+        logging.error(f"Error in dexsignals command: {e}")
+        await ctx.send(f"An error occurred while processing the request.", ephemeral=True)
+        
+async def scrape_and_send_telegram_messages(ctx, role):
+    """Loop to continuously scrape Telegram messages and send new signals."""
+    global processed_message_ids, last_message_time
+    max_retries = 5  # Maximum number of retries
+    retry_delay = 5  # Initial delay in seconds
+
+    try:
+        # Connect to the Telegram client
+        await telegram_client.start()
+
+        while True:
+            try:
+                # Fetch the newest messages from the Telegram channel
+                messages = await telegram_client.get_messages('dexpaidpump', limit=100, reverse=False)
+                
+                new_addresses = set()
+
+                for message in messages:
+                    # Get the message time
+                    message_time = message.date.replace(tzinfo=timezone.utc)
+
+                    # Check if the message is newer than the last processed message
+                    if last_message_time is None or message_time > last_message_time:
+                        address = extract_contract_address(message.message)
+                        if address:
+                            new_addresses.add(address)
+                            processed_message_ids.add(message.id)
+                            last_message_time = message_time
+
+                if new_addresses:
+                    valid_addresses = set()
+
+                    for address in new_addresses:
+                        url = f"{FETCH_COIN_DATA}{address}"
+                        data = await fetch_data(url)
+                        if data and 'data' in data and 'token' in data['data']:
+                            item = data['data']['token']
+                            
+                            connected_wallets = count_connected_wallets(await fetch_bubblemap_data(item['address']))
+                            socials = get_socials(item.get('social_links', {}))
+                            topbuyers = await fetch_top_buyers(item['address'])
+
+                            embed = await generate_simple_embed(item, socials, connected_wallets, topbuyers, role)
+                            if embed:
+                                if role:
+                                    await ctx.channel.send(content=f"{role.mention}", embeds=[embed])
+                                else:
+                                    await ctx.channel.send(embeds=[embed])
+                                valid_addresses.add(address)
+
+                    if not valid_addresses:
+                        await ctx.send('No valid data found for the extracted addresses.', ephemeral=True)
+
+                # Reset retry settings after a successful run
+                max_retries = 5
+                retry_delay = 5
+
+            except RpcCallFailError as e:
+                logging.warning(f"Telegram API error: {e}. Retrying in {retry_delay} seconds...")
+                if max_retries > 0:
+                    await asyncio.sleep(retry_delay)
+                    max_retries -= 1
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logging.error(f"Max retries reached. Skipping this cycle.")
+                    break  # or return, or continue with other tasks
+
+            # Wait for 5 seconds before checking again
+            await asyncio.sleep(5)
+
+    except Exception as e:
+        logging.error(f"Error in scrape_and_send_telegram_messages: {e}")
+    finally:
+        await telegram_client.disconnect()
+
+async def generate_simple_embed(item, socials, connected_wallets, topbuyers, role):
+    """Generate a simple embed with the required fields."""
+    try:
+        # Prepare the data for the embed
+        coin_info = f"```{item['address']}```\n"
+        if socials:
+            coin_info += f"{socials}\n"
+        coin_info += f"💊 **[Pump](https://pump.fun/{item['address']})**\n\n"
+
+        market_cap = format_large_number(int(float(item.get('market_cap'))) if item.get('market_cap') else 'N/A')
+        created_time_since = get_time_since_creation(item['creation_timestamp']) if item.get('creation_timestamp') else 'N/A'
+        holder_count = item.get('holder_count', 'N/A')
+        volume_1m = format_large_number(int(float(item.get('volume_1m', 0.0) or 0.0)))
+        top_10_holder_rate = float(item.get('top_10_holder_rate')) * 100 if item.get('top_10_holder_rate') is not None else 0.0
+        creator_balance = int(float(item.get('creator_balance', 0.00)))
+        creator_balance_rate = float(item.get('creator_percentage', 0.0)) * 100 if item.get('creator_percentage') is not None else 0.0
+        
+        if item.get('creator_token_status') == "creator_close" or item.get('creator_close') is True:
+            dev_status = "Dev sold all: ✅"
+        elif item.get('creator_token_status') == "creator_hold":
+            dev_status = f"Dev Holds: `{creator_balance_rate:.2f}%`"
+        elif item.get('creator_token_status') == "creator_buy":
+            dev_status = f"Dev Bought More:  `{creator_balance_rate:.2f}%`"
+        else:
+            dev_status = "Dev sold: ❌"
+            
+        holder_rugged_num = item.get('holder_rugged_num', 0.0)
+        holder_token_num = item.get('holder_token_num', 0.0)
+
+        # Ensure topbuyers is a dictionary-like object before accessing its contents
+        holders = topbuyers.get('holders', {})
+        fresh_wallet_count = sum('fresh_wallet' in holder.get('tags', []) for holder in holders.get('holderInfo', []))
+        sniper_count = sum('sniper' in holder.get('maker_token_tags', []) for holder in holders.get('holderInfo', []))
+        rat_trader_count = sum('rat_trader' in holder.get('maker_token_tags', []) for holder in holders.get('holderInfo', []))
+        smart_trader_count = sum('pump_smart' in holder.get('tags', []) for holder in holders.get('holderInfo', []))
+
+        telegram_links = await fetch_telegram_links(item['address'], item['symbol'], item['name'])
+        telegram_field_value = " | ".join(telegram_links) if telegram_links else "No TG Found"
+        logging.info(f"Telegram links for {item['name']} ({item['symbol']}): {telegram_field_value}")
+        cto_flag = "✅" if telegram_links else "❌"
+
+        bubblemap_check = f"[Bubblemap](https://app.bubblemaps.io/sol/token/{item['address']}?pumpfun=true)"
+        cto_flag = "✅" if item.get('cto_flag') else "❌"
+
+        field_value = (
+            f"💎 **MCAP:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
+            f"📊 **1m-Vol:** `${volume_1m}`\n"
+            f"🏆 **Top10**: `{top_10_holder_rate:.2f}%` 👥 **Holders:** `{holder_count}`\n"
+            f"🫅 **Dev SolBal:** `{creator_balance}`"
+            f"\n\n\n"
+        )
+
+        other_info = (
+            f"🍼 Fresh Wallets: `{fresh_wallet_count}` \n"
+            f"🎯 Snipers: `{sniper_count}`\n"
+            f"🐀 Rats: `{rat_trader_count}`\n"
+            f"🧠 Smart Traders: `{smart_trader_count}`\n"
+            f"🧑‍💻 {dev_status}\n"
+            f"🔗 Connected Wallets: `{connected_wallets}` | {bubblemap_check}\n"
+            f"⚠️ Deployed: `{holder_token_num}` | Rugged: `{holder_rugged_num}`\n"
+            f"🫂 CTO?: {cto_flag}\n\n\n"
+        )
+        
+        quick_buy = (
+            f"**[GmGn](https://gmgn.ai/sol/token/Sef3AuWIF_{item['address']})** ∙ "
+            f"**[Photon](https://photon-sol.tinyastro.io/en/r/@rodent0x/{item['address']})** ∙ "
+            f"**[Bull](https://bullx.io/terminal?chainId=1399811149&address={item['address']})** ∙ "
+            f"**[PepeB](https://t.me/pepeboost_sol04_bot?start=ref_01obi0_ca_{item['address']})** ∙ "
+            f"**[Troj](https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']})** ∙ "
+            f"**[Fasol](https://t.me/fasol_robot?start=ref_rodent0x_ca_{item['address']})**\n\n"
+        )
+        
+        ctotg =(
+            f"🧑‍💻 CTO TG: {telegram_field_value}\n"
+        )
+        
+        # Fix placement of embed creation
+        embed = interactions.Embed(
+            title="✅ **DexScreener PAID!** ✅",
+            description=coin_info + field_value + other_info + quick_buy + ctotg,
+            color=0x013220
+        )
+        
+        logo_url = item['logo']
+        if 'ipfs/' in item['logo']:
+            ipfs_hash = item['logo'].split('ipfs/')[-1]
+            logo_url = f"https://pump.mypinata.cloud/ipfs/{ipfs_hash}"
+        embed.set_thumbnail(url=logo_url)
+        
+        embed.set_author(name=f"{item['name']} ({item['symbol']})")
+        
+        random_footer = random.choice(footer_messages)
+        embed.set_footer(text=random_footer)
+        return embed
+
+    except Exception as e:
+        logging.error(f"Error in generate_simple_embed: {e}")
+        return None  # Handle the error gracefully and return None
+        
+        
 def get_seen_coins(guildname):
     """Fetch seen_coins from the database."""
     coins_collection = db[f'coins_{guildname}']
