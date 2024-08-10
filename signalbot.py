@@ -1138,6 +1138,7 @@ async def scrape_telegram_preview(ctx, role):
     """Scrape the Telegram preview page for the last three messages and send signals."""
     url = 'https://t.me/s/dexpaidpump'
     last_message_time = None
+    processed_addresses = set()  # Set to keep track of processed contract addresses
 
     async with aiohttp.ClientSession() as session:
         while True:
@@ -1167,8 +1168,12 @@ async def scrape_telegram_preview(ctx, role):
                                         code_element = block.find('code')
                                         if code_element:
                                             contract_address = code_element.get_text()
-                                            new_addresses.add(contract_address)
-                                            last_message_time = message_time
+
+                                            # Check if the address has already been processed
+                                            if contract_address not in processed_addresses:
+                                                new_addresses.add(contract_address)
+                                                processed_addresses.add(contract_address)  # Mark as processed
+                                                last_message_time = message_time
                             except Exception as inner_e:
                                 logging.error(f"Error processing block: {inner_e}")
 
