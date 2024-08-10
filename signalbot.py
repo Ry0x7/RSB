@@ -566,14 +566,18 @@ async def send_coins(channel, task_type, ctx):
                     continue
                 
                 # Conditional filtering based on task_type
-                volume_1m = int(float(item.get('volume_1m', 0.0) or 0.0))
+                volume_1m = item.get('volume_1m')
+                if volume_1m is None:
+                    continue  # Skip this item if volume_1m is None
                 
-                if task_type == "new" and volume_1m < 1800:
-                    continue  # Skip if volume is below 1000 for new coins
+                volume_1m = int(float(volume_1m))
+                
+                if task_type == "new" and volume_1m < 2000:
+                    continue  # Skip if volume is below 2000 for new coins
                 elif task_type == "soaring" and volume_1m < 1500:
-                    continue  # Skip if volume is below 3000 for soaring coins
-                elif task_type == "completing" and volume_1m < 800:
-                    continue  # Skip if volume is below 5000 for completing coins
+                    continue  # Skip if volume is below 1500 for soaring coins
+                elif task_type == "completing" and volume_1m < 1000:
+                    continue  # Skip if volume is below 1000 for completing coins
                 
                 # Fetch top buyers data
                 top_buyers = await fetch_top_buyers(item['address'])
@@ -588,25 +592,32 @@ async def send_coins(channel, task_type, ctx):
 
                 # Check if the coin was already called by the bot
                 called_by = ctx.bot.user.username
+                usd_market_cap = item.get('usd_market_cap')
+                
+                if usd_market_cap is None:
+                    continue  # Skip this item if usd_market_cap is None
+                
+                usd_market_cap = int(float(usd_market_cap))
+                
                 if coin_key not in seen_coins:
                     seen_coins[coin_key] = {
                         'address': item['address'],
-                        'called_mcap': int(float(item['usd_market_cap'])),
-                        'market_cap': int(float(item['usd_market_cap'])),
+                        'called_mcap': usd_market_cap,
+                        'market_cap': usd_market_cap,
                         'called_at': datetime.now(tz=timezone.utc),
                         'called_by': called_by
                     }
                     seen_tickers[item['symbol']] = item['address']
                     update_seen_coin(
                         item['name'], item['symbol'], item['address'],
-                        int(float(item['usd_market_cap'])),
-                        int(float(item['usd_market_cap'])),
+                        usd_market_cap,
+                        usd_market_cap,
                         datetime.now(tz=timezone.utc),
                         called_by,
                         guildname
                     )
                 else:
-                    seen_coins[coin_key]['market_cap'] = int(float(item['usd_market_cap']))
+                    seen_coins[coin_key]['market_cap'] = usd_market_cap
                     # Only update 'called_by' if it's not already set
                     existing_called_by = seen_coins[coin_key].get('called_by')
                     if not existing_called_by:
@@ -624,7 +635,6 @@ async def send_coins(channel, task_type, ctx):
             await delete_old_messages(channel, valid_addresses, task_type)
     except Exception as e:
         logging.error(f"Error in send_coins: {e}")
-
 
 def build_query_url(base_url, params):
     """Build query URL from the base URL and parameters."""
