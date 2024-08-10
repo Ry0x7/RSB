@@ -11,8 +11,8 @@ import difflib
 import re
 import random
 from interactions import listen, Client
-from telethon import TelegramClient, events
-from telethon.errors.rpcerrorlist import RpcCallFailError
+from bs4 import BeautifulSoup
+
 
 
 
@@ -33,12 +33,6 @@ MONGO_URI = os.getenv('MONGO_URI')
 mongo_client = pymongo.MongoClient(MONGO_URI)
 db = mongo_client['crypto_bot']
 
-# Telegram API credentials
-api_id = os.getenv('TELEGRAM_API_ID')
-api_hash = os.getenv('TELEGRAM_API_HASH')
-
-# Create a Telegram Client
-telegram_client = TelegramClient('session_name', api_id, api_hash)
 # Store last data and seen coins/tickers
 last_data = {}
 seen_coins = {}
@@ -1111,16 +1105,6 @@ async def ca(ctx, address: str):
         logging.error(f"Error in ca command: {e}")
         await ctx.send(f"An error occurred while processing the request.")
 
-def extract_contract_address(message_text):
-    # Simplified regex to scrape everything inside the backticks following 'CA:'
-    start = message_text.find('🎲CA:')
-    if start != -1:
-        start = message_text.find(' ', start)
-        end = message_text.find('\n\n', start + 1)
-        if start != -1 and end != -1:
-            return message_text[start + 1:end]
-    return None
-
 @interactions.slash_command(
     name="dexsignals",
     description="Start sending signals from the DEX Paid Coins",
@@ -1143,88 +1127,86 @@ async def dexsignals(ctx, role: interactions.Role = None):
 
         await ctx.send('Scanning for DEX Paid Pump signals...', ephemeral=True)
 
-        # Start the loop to scrape and send messages, pass the role to the function
-        await scrape_and_send_telegram_messages(ctx, role)
+        # Start scraping the Telegram preview page
+        await scrape_telegram_preview(ctx, role)
 
     except Exception as e:
         logging.error(f"Error in dexsignals command: {e}")
         await ctx.send(f"An error occurred while processing the request.", ephemeral=True)
         
-async def scrape_and_send_telegram_messages(ctx, role):
-    """Loop to continuously scrape Telegram messages and send new signals."""
-    global processed_message_ids, last_message_time
-    max_retries = 5  # Maximum number of retries
-    retry_delay = 5  # Initial delay in seconds
+async def scrape_telegram_preview(ctx, role):
+    """Scrape the Telegram preview page for the last three messages and send signals."""
+    url = 'https://t.me/s/dexpaidpump'
+    last_message_time = None
 
-    try:
-        # Connect to the Telegram client
-        await telegram_client.start()
-
+    async with aiohttp.ClientSession() as session:
         while True:
             try:
-                # Fetch the newest messages from the Telegram channel
-                messages = await telegram_client.get_messages('dexpaidpump', limit=100, reverse=False)
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        page_content = await response.text()
+                        soup = BeautifulSoup(page_content, 'html.parser')
+
+                        # Find all message blocks
+                        message_blocks = soup.find_all('div', class_='tgme_widget_message_wrap')
+
+                        # Only check the last three messages (from the bottom)
+                        message_blocks = message_blocks[-3:]
+
+                        new_addresses = set()
+
+                        for block in reversed(message_blocks):  # Process from bottom to top
+                            try:
+                                # Extract the message time
+                                message_time_element = block.find('time')
+                                if message_time_element:
+                                    message_time = message_time_element['datetime']
+
+                                    if last_message_time is None or message_time > last_message_time:
+                                        # Extract the contract address
+                                        code_element = block.find('code')
+                                        if code_element:
+                                            contract_address = code_element.get_text()
+                                            new_addresses.add(contract_address)
+                                            last_message_time = message_time
+                            except Exception as inner_e:
+                                logging.error(f"Error processing block: {inner_e}")
+
+                        if new_addresses:
+                            valid_addresses = set()
+
+                            for address in new_addresses:
+                                api_url = f"{FETCH_COIN_DATA}{address}"
+                                data = await fetch_data(api_url)
+                                if data and 'data' in data and 'token' in data['data']:
+                                    item = data['data']['token']
+
+                                    connected_wallets = count_connected_wallets(await fetch_bubblemap_data(item['address']))
+                                    socials = get_socials(item.get('social_links', {}))
+                                    topbuyers = await fetch_top_buyers(item['address'])
+
+                                    embed = await generate_simple_embed(item, socials, connected_wallets, topbuyers, role)
+                                    if embed:
+                                        if role:
+                                            await ctx.channel.send(content=f"{role.mention}", embeds=[embed])
+                                        else:
+                                            await ctx.channel.send(embeds=[embed])
+                                        valid_addresses.add(address)
+
+                            if not valid_addresses:
+                                await ctx.send('No valid data found for the extracted addresses.', ephemeral=True)
+
+                    else:
+                        logging.error(f"Failed to fetch the page, status code: {response.status}")
+
+                # Wait for 5 seconds before checking again
+                await asyncio.sleep(5)
+
+            except Exception as e:
+                logging.error(f"Error in scrape_telegram_preview: {e}", exc_info=True)
+                await asyncio.sleep(10)  # Wait before retrying
+
                 
-                new_addresses = set()
-
-                for message in messages:
-                    # Get the message time
-                    message_time = message.date.replace(tzinfo=timezone.utc)
-
-                    # Check if the message is newer than the last processed message
-                    if last_message_time is None or message_time > last_message_time:
-                        address = extract_contract_address(message.message)
-                        if address:
-                            new_addresses.add(address)
-                            processed_message_ids.add(message.id)
-                            last_message_time = message_time
-
-                if new_addresses:
-                    valid_addresses = set()
-
-                    for address in new_addresses:
-                        url = f"{FETCH_COIN_DATA}{address}"
-                        data = await fetch_data(url)
-                        if data and 'data' in data and 'token' in data['data']:
-                            item = data['data']['token']
-                            
-                            connected_wallets = count_connected_wallets(await fetch_bubblemap_data(item['address']))
-                            socials = get_socials(item.get('social_links', {}))
-                            topbuyers = await fetch_top_buyers(item['address'])
-
-                            embed = await generate_simple_embed(item, socials, connected_wallets, topbuyers, role)
-                            if embed:
-                                if role:
-                                    await ctx.channel.send(content=f"{role.mention}", embeds=[embed])
-                                else:
-                                    await ctx.channel.send(embeds=[embed])
-                                valid_addresses.add(address)
-
-                    if not valid_addresses:
-                        await ctx.send('No valid data found for the extracted addresses.', ephemeral=True)
-
-                # Reset retry settings after a successful run
-                max_retries = 5
-                retry_delay = 5
-
-            except RpcCallFailError as e:
-                logging.warning(f"Telegram API error: {e}. Retrying in {retry_delay} seconds...")
-                if max_retries > 0:
-                    await asyncio.sleep(retry_delay)
-                    max_retries -= 1
-                    retry_delay *= 2  # Exponential backoff
-                else:
-                    logging.error(f"Max retries reached. Skipping this cycle.")
-                    break  # or return, or continue with other tasks
-
-            # Wait for 5 seconds before checking again
-            await asyncio.sleep(5)
-
-    except Exception as e:
-        logging.error(f"Error in scrape_and_send_telegram_messages: {e}")
-    finally:
-        await telegram_client.disconnect()
-
 async def generate_simple_embed(item, socials, connected_wallets, topbuyers, role):
     """Generate a simple embed with the required fields."""
     try:
