@@ -58,10 +58,10 @@ footer_messages = [
     "For business inquiries, DM @chakazzz 👑",
     "Crypto tracking by your favorite bot 🔍",
     "Stay updated with the latest trends 🌐",
+    "Want this bot in your server? DM @chakazzz 👑",
     "Monitoring the crypto universe 🌌",
     "Data accuracy is our priority 📈",
     "Powered by your friendly neighborhood bot 🤖",
-    "Want this bot in your server? DM @chakazzz 👑",
     "Nothing is more important than data accuracy 📊",
     "For the best signals, DM @chakazzz 👑"
 ]
