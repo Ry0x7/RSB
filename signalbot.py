@@ -699,10 +699,6 @@ async def on_ready():
     for guild in bot.guilds:
         seen_coins.update(get_seen_coins(guild.name))
 
-    # Start background tasks
-    asyncio.create_task(monitor_tasks())
-    asyncio.create_task(check_volume_movement())
-    
     
 async def change_status_loop():
     """Loop to change the bot's status every minute."""
@@ -905,27 +901,6 @@ async def loop_send_coins(channel, task_type, ctx):
         except Exception as e:
             logging.error(f"Error in loop_send_coins for {task_type}: {e}")
         await asyncio.sleep(3)
-
-async def monitor_tasks():
-    """Monitor tasks to ensure they are running."""
-    while True:
-        for channel_id, task_data in list(running_tasks.items()):
-            for task_type, job in task_data.items():
-                try:
-                    # If job is cancelled or finished, it will raise an exception
-                    await job.wait()
-                except asyncio.CancelledError:
-                    logging.warning(f"Task for channel {channel_id} was cancelled. Restarting {task_type} task...")
-                    channel = await bot.fetch_channel(channel_id)
-                    new_task = await aiojobs.create_scheduler().spawn(loop_send_coins(channel, task_type))
-                    running_tasks[channel_id][task_type] = new_task
-                except Exception as e:
-                    logging.warning(f"Task for channel {channel_id} encountered an error: {e}")
-                    channel = await bot.fetch_channel(channel_id)
-                    new_task = await aiojobs.create_scheduler().spawn(loop_send_coins(channel, task_type))
-                    running_tasks[channel_id][task_type] = new_task
-        await asyncio.sleep(60)
-
 
 def get_socials(social_links):
     """Generate social media links for the embed."""
