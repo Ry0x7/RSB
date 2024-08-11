@@ -760,7 +760,7 @@ async def admin_command(ctx):
     return False
 
 
-async def start_task(ctx, task_type):
+async def start_task(ctx, task_type, role=None):
     """Start a task to send coin information."""
     if ctx.channel.id in running_tasks:
         if task_type in running_tasks[ctx.channel.id]:
@@ -768,8 +768,9 @@ async def start_task(ctx, task_type):
             return
     await ctx.send(f'Grabbing {task_type.capitalize()} Coins for the BAGSS! 👜', ephemeral=True)
     scheduler = await aiojobs.create_scheduler()
+    
     if task_type == "dexsignals":
-        task = await scheduler.spawn(scrape_telegram_preview(ctx, None))  # Adjust to include role if needed
+        task = await scheduler.spawn(scrape_telegram_preview(ctx, role))
     else:
         task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type, ctx))
     
@@ -777,6 +778,7 @@ async def start_task(ctx, task_type):
         running_tasks[ctx.channel.id] = {}
     running_tasks[ctx.channel.id][task_type] = task
     await ctx.send(f'Started sending {task_type} coin information. 📈', ephemeral=True)
+
 
 
 @interactions.slash_command(
@@ -822,8 +824,7 @@ async def stop(ctx):
                     del running_tasks[ctx.channel.id][task_type]
                     stopped_any = True
 
-            # Optionally, clear messages if this is desired
-            await ctx.channel.purge()
+            await ctx.channel.purge()  # Optionally clear messages
 
         if stopped_any:
             await ctx.send(f'Stopped sending token information and deleted all messages in this channel. ❌', ephemeral=True)
@@ -831,6 +832,7 @@ async def stop(ctx):
             await ctx.send('No active tasks to stop in this channel. ❌', ephemeral=True)
     else:
         await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+
 
 @interactions.slash_command(
     name="clear",
@@ -1138,9 +1140,10 @@ async def ca(ctx, address: str):
 )
 async def dexsignals(ctx, role: interactions.Role = None):
     if await admin_command(ctx):
-        await start_task(ctx, "dexsignals")
+        await start_task(ctx, "dexsignals", role)
     else:
         await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+
 
         
 async def scrape_telegram_preview(ctx, role):
