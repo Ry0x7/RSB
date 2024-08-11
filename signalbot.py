@@ -737,8 +737,8 @@ async def change_status_loop():
         except Exception as e:
             logging.error(f"Failed to change presence: {e}")
         
-        logging.info("Sleeping for 60 seconds.")
-        await asyncio.sleep(60)  # Delay for 1 minute (60 seconds)
+        logging.info("Sleeping for 15 seconds.")
+        await asyncio.sleep(15)  # Delay for 1 minute (60 seconds)
         
 async def admin_command(ctx):
     """Check if the user has admin permissions."""
