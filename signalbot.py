@@ -760,23 +760,24 @@ async def admin_command(ctx):
     return False
 
 
-
 async def start_task(ctx, task_type):
     """Start a task to send coin information."""
-    if not await admin_command(ctx):
-        await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-        return
     if ctx.channel.id in running_tasks:
         if task_type in running_tasks[ctx.channel.id]:
             await ctx.send(f'Task {task_type.capitalize()} is already running in this channel.', ephemeral=True)
             return
     await ctx.send(f'Grabbing {task_type.capitalize()} Coins for the BAGSS! 👜', ephemeral=True)
     scheduler = await aiojobs.create_scheduler()
-    task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type, ctx))
+    if task_type == "dexsignals":
+        task = await scheduler.spawn(scrape_telegram_preview(ctx, None))  # Adjust to include role if needed
+    else:
+        task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type, ctx))
+    
     if ctx.channel.id not in running_tasks:
         running_tasks[ctx.channel.id] = {}
     running_tasks[ctx.channel.id][task_type] = task
     await ctx.send(f'Started sending {task_type} coin information. 📈', ephemeral=True)
+
 
 @interactions.slash_command(
     name="soaring",
@@ -812,27 +813,24 @@ async def new(ctx):
     dm_permission=False
 )
 async def stop(ctx):
-    try:
-        if not await admin_command(ctx):
-            await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-            return
+    if await admin_command(ctx):
         stopped_any = False
         if ctx.channel.id in running_tasks:
-            for task_type in ["soaring", "new", "completing"]:
+            for task_type in ["soaring", "new", "completing", "dexsignals"]:
                 if task_type in running_tasks[ctx.channel.id]:
                     await running_tasks[ctx.channel.id][task_type].close()
                     del running_tasks[ctx.channel.id][task_type]
                     stopped_any = True
 
-            # Delete all messages in the channel
+            # Optionally, clear messages if this is desired
             await ctx.channel.purge()
 
         if stopped_any:
             await ctx.send(f'Stopped sending token information and deleted all messages in this channel. ❌', ephemeral=True)
         else:
             await ctx.send('No active tasks to stop in this channel. ❌', ephemeral=True)
-    except Exception as e:
-        logging.error(f"Error in stop command: {e}")
+    else:
+        await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
 
 @interactions.slash_command(
     name="clear",
@@ -1139,19 +1137,11 @@ async def ca(ctx, address: str):
     ]
 )
 async def dexsignals(ctx, role: interactions.Role = None):
-    try:
-        if not await admin_command(ctx):
-            await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-            return
+    if await admin_command(ctx):
+        await start_task(ctx, "dexsignals")
+    else:
+        await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
 
-        await ctx.send('Scanning for DEX Paid Pump signals...', ephemeral=True)
-
-        # Start scraping the Telegram preview page
-        await scrape_telegram_preview(ctx, role)
-
-    except Exception as e:
-        logging.error(f"Error in dexsignals command: {e}")
-        await ctx.send(f"An error occurred while processing the request.", ephemeral=True)
         
 async def scrape_telegram_preview(ctx, role):
     """Scrape the Telegram preview page for the last three messages and send signals."""
