@@ -850,11 +850,12 @@ async def admin_command(ctx):
 
     member = ctx.author  # Get the member object for the author
 
-    # Check if the user is the owner or has Manage Guild or Administrator permissions
-    if ctx.author.id == int(owner_id) or (
-        member.has_permission(interactions.Permissions.MANAGE_GUILD) or 
-        member.has_permission(interactions.Permissions.ADMINISTRATOR)
-    ):
+    # Allow all commands for the owner
+    if ctx.author.id == int(owner_id):
+        return True
+
+    # Check if the user has Manage Guild or Administrator permissions
+    if member.has_permission(interactions.Permissions.MANAGE_GUILD) or member.has_permission(interactions.Permissions.ADMINISTRATOR):
         return True
 
     return False
