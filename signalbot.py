@@ -83,7 +83,38 @@ status_messages = [
     "Want the best signals? DM @chakazzz 👑"
 ]
 
+useragents = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.104 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.89 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.88 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.101 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36",
+    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:85.0) Gecko/20100101 Firefox/85.0",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:84.0) Gecko/20100101 Firefox/84.0",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:83.0) Gecko/20100101 Firefox/83.0",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:82.0) Gecko/20100101 Firefox/82.0",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 14_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (iPad; CPU OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15A5341f Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Mobile Safari/537.36",
+    "Mozilla/5.0 (Linux; Android 9; SM-G960F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.90 Mobile Safari/537.36",
+    "Mozilla/5.0 (Linux; Android 8.0.0; SM-G950F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.101 Mobile Safari/537.36"
+]
+
+
 main_proxy = "https://spczig9st1:9~QJmaHbtsnv73xbS8@gate.smartproxy.com:7000"
+
 def fetch_ip(proxy_parsed, proxy_auth_encoded):
     """Fetch the current IP address using the proxy."""
     conn = http.client.HTTPSConnection(proxy_parsed.hostname, proxy_parsed.port)
@@ -122,7 +153,7 @@ def fetch_data(url, retries=3, delay=3):
                 conn = http.client.HTTPSConnection(proxy_parsed.hostname, proxy_parsed.port)
                 conn.set_tunnel("gmgn.ai", headers={"Proxy-Authorization": f"Basic {proxy_auth_encoded}"})
                 headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0',
+                    'User-Agent': random.choice(useragents),
                     'Accept': 'application/json, text/plain, */*',
                     'Accept-Language': 'en-US,en;q=0.5',
                     'Accept-Encoding': 'gzip, deflate, br, zstd',
@@ -402,8 +433,7 @@ def format_percentage(value):
 async def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator="", ca_data=None):
     """Format the embed message for the coin."""
     embed_title = f"🪙 {item['name']} (${item['symbol']})"
-    trendcoin = f"**{trend}** | `{percentage_change}{trend_indicator}`" if updated else ""
-    embed = interactions.Embed(title=trendcoin, color=0x00ff00)
+    embed = interactions.Embed(title="", color=0x00ff00)
     embed.set_author(name=embed_title)
     logo_url = item['logo']
     if 'ipfs/' in item['logo']:
@@ -506,7 +536,6 @@ async def generate_embed_fields(item, social_links, top_buyers, connected_wallet
     field_value = (
         f"💎 **MCAP:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
         f"📊 **1m-Vol:** `${volume_1m}`\n"
-        f"👁️ **Called At:** `${format_large_number(seen_coins[(item['name'], item['symbol'])]['called_mcap'])}`\n"
         f"🏆 **Top10**: `{top_10_holder_rate:.2f}%` 👥 **Holders:** `{holder_count}`\n"
         f"🫅 **Dev SolBal:** `{creator_balance}`\n"
         f"\n\n\n"
@@ -551,7 +580,7 @@ async def generate_embed_fields(item, social_links, top_buyers, connected_wallet
     }
 
 async def send_or_update_embed(channel, item, task_type):
-    """Send or update the embed message for the coin."""
+    """Send the embed message for the coin without updating it if already sent."""
     guildname = channel.guild.name
     coins_collection = db[f'coins_{guildname}']
 
@@ -561,60 +590,37 @@ async def send_or_update_embed(channel, item, task_type):
         volume_check[channel_id] = {"soaring": {}, "new": {}, "completing": {}}
     
     sent_messages_task = sent_messages[channel_id][task_type]
-    updated = item['address'] in sent_messages_task
-    trend, percentage_change, trend_indicator = "", "", ""
     
-    if updated:
-        previous_mcap = seen_coins[(item['name'], item['symbol'])]['called_mcap']
-        current_mcap = int(float(item['usd_market_cap']))
-        percentage_change, trend_indicator = calculate_percentage_change(previous_mcap, current_mcap)
-        trend = "Blasting! 🚀" if current_mcap > previous_mcap else "Dipping! 💥" if current_mcap < previous_mcap else ""
-        seen_coins[(item['name'], item['symbol'])]['market_cap'] = current_mcap
-    embed = await format_embed(item, updated, trend, percentage_change, trend_indicator)
+    
+    # Check if the embed has already been sent
+    if item['address'] in sent_messages_task:
+        logging.info(f"Skipping {item['name']} ({item['symbol']}) as it has already been sent.")
+        return
+    
+    top_buyers = top_buyers_cache.get(item['address']) or fetch_top_buyers(item['address'])
+    top_buyers_cache[item['address']] = top_buyers
+
+    # Check for dev_team and sniper tags only for the /new task
+    if top_buyers is None:
+        logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
+        return
+
+    holders = top_buyers.get('holders', {})
+    if check_dev_sniper_tags(holders) or check_sniper_count(holders):
+        logging.info(f"Token {item['address']} has dev_team and sniper tags in a single wallet or too many snipers. Skipping.")
+        return
+    
+    embed = await format_embed(item)
     if not embed:
         return
+    
     try:
-        if updated:
-            message_id = sent_messages_task[item['address']]
-            try:
-                message = await channel.fetch_message(message_id)
-                if message:
-                    await message.edit(embeds=[embed])
-                else:
-                    del sent_messages_task[item['address']]
-                    message = await channel.send(embeds=[embed])
-                    sent_messages_task[item['address']] = message.id
-            except interactions.errors.NotFound:
-                del sent_messages_task[item['address']]
-                message = await channel.send(embeds=[embed])
-                sent_messages_task[item['address']] = message.id
-        else:
-            message = await channel.send(embeds=[embed])
-            sent_messages_task[item['address']] = message.id
-        
-        # Update volume check
-        volume_check[channel_id][task_type][item['address']] = {
-            "last_volume": int(float(item['volume_1m'])),
-            "timestamp": datetime.now(tz=timezone.utc)
-        }
+        # Send the message only if it hasn't been sent already
+        message = await channel.send(embeds=[embed])
+        sent_messages_task[item['address']] = message.id
 
     except Exception as e:
         logging.error(f"Error in send_or_update_embed: {e}")
-
-async def delete_old_messages(channel, valid_addresses, task_type):
-    """Delete old messages that are no longer valid."""
-    channel_id = channel.id
-    if channel_id in sent_messages:
-        sent_messages_task = sent_messages[channel_id][task_type]
-        for address, message_id in list(sent_messages_task.items()):
-            if address not in valid_addresses:
-                try:
-                    message = await channel.fetch_message(message_id)
-                    if message:
-                        await message.delete()
-                    del sent_messages_task[address]
-                except interactions.errors.NotFound:
-                    del sent_messages_task[address]
 
 async def send_coins(channel, task_type, ctx):
     global last_data
@@ -662,7 +668,6 @@ async def send_coins(channel, task_type, ctx):
         # logging.info(f"Data: {data}")
         if data and data['data']['rank'] != last_data[channel_id][task_type]:
             last_data[channel_id][task_type] = data['data']['rank']
-            valid_addresses = {item['address'] for item in data['data']['rank']}
             for item in data['data']['rank']:
                 coin_key = (item['name'], item['symbol'])
                 
@@ -677,31 +682,13 @@ async def send_coins(channel, task_type, ctx):
                 
                 volume_1m = int(float(volume_1m))
                 
-                if task_type == "new" and volume_1m < 1000:
+                if task_type == "new" and volume_1m < 2000:
                     continue  # Skip if volume is below 2000 for new coins
-                elif task_type == "soaring" and volume_1m < 1500:
+                elif task_type == "soaring" and volume_1m < 3000:
                     continue  # Skip if volume is below 1500 for soaring coins
                 elif task_type == "completing" and volume_1m < 1000:
                     continue  # Skip if volume is below 1000 for completing coins
                 
-                # Fetch top buyers data
-                # Fetch top buyers data only for the /new task using the cache
-                if task_type == "new":
-                    top_buyers = top_buyers_cache.get(item['address']) or fetch_top_buyers(item['address'])
-                    top_buyers_cache[item['address']] = top_buyers
-
-                    # Check for dev_team and sniper tags only for the /new task
-                    if top_buyers is None:
-                        logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
-                        continue
-
-                    holders = top_buyers.get('holders', {})
-                    if check_dev_sniper_tags(holders) or check_sniper_count(holders):
-                        logging.info(f"Token {item['address']} has dev_team and sniper tags in a single wallet or too many snipers. Skipping.")
-                        continue
-                else:
-                    top_buyers = fetch_top_buyers(item['address'])
-                    
                 # Check if the coin was already called by the bot
                 called_by = ctx.bot.user.username
                 usd_market_cap = item.get('usd_market_cap')
@@ -744,7 +731,6 @@ async def send_coins(channel, task_type, ctx):
                     )
                 
                 await send_or_update_embed(channel, item, task_type)
-            await delete_old_messages(channel, valid_addresses, task_type)
     except Exception as e:
         logging.error(f"Error in send_coins: {e}", exc_info=True)
         
@@ -764,48 +750,6 @@ async def fetch_current_market_cap(address):
     else:
         logging.error(f"No valid data returned for address {address}")
     return None
-
-async def check_volume_movement():
-    """Check if the volume is moving for each coin."""
-    while True:
-        for channel_id, channel_data in volume_check.items():
-            for task_type, addresses in channel_data.items():
-                for address, data in list(addresses.items()):
-                    if datetime.now(tz=timezone.utc) - data['timestamp'] >= timedelta(minutes=2):
-                        current_volume = fetch_current_volume(address)
-                        if int(float(current_volume)) == data['last_volume']:
-                            logging.info(f"Removing {address} from {task_type} in channel {channel_id} due to no volume movement.")
-                            channel = await bot.fetch_channel(channel_id)
-                            await delete_message(channel, address, task_type)
-                        else:
-                            volume_check[channel_id][task_type][address]['last_volume'] = int(float(current_volume))
-                            volume_check[channel_id][task_type][address]['timestamp'] = datetime.now(tz=timezone.utc)
-        await asyncio.sleep(120)
-
-async def fetch_current_volume(address):
-    """Fetch the current volume for the given address."""
-    url = f"{FETCH_COIN_DATA}{address}"
-    data = await fetch_data(url)
-    if data and 'data' in data and 'token' in data['data'] and len(data['data']['token']) > 0:
-        return int(float(data['data']['token'][0]['volume_1m']))
-    else:
-        logging.error(f"No valid data returned for address {address}")
-    return None
-
-async def delete_message(channel, address, task_type):
-    """Delete a specific message from the channel."""
-    channel_id = channel.id
-    if channel_id in sent_messages and address in sent_messages[channel_id][task_type]:
-        try:
-            message_id = sent_messages[channel_id][task_type][address]
-            message = await channel.fetch_message(message_id)
-            if message:
-                await message.delete()
-            del sent_messages[channel_id][task_type][address]
-            del volume_check[channel_id][task_type][address]
-        except interactions.errors.NotFound:
-            del sent_messages[channel_id][task_type][address]
-            del volume_check[channel_id][task_type][address]
 
 @listen()
 async def on_ready():
@@ -1498,4 +1442,3 @@ def update_seen_coin(name, symbol, address, called_mcap, market_cap, called_at, 
 
 # Start the bot
 bot.start()
-
