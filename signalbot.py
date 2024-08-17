@@ -337,22 +337,24 @@ async def fetch_wallet_counts(address):
         logging.error(f"No valid data returned for wallet counts of address {address}")
     return None
 
-def fetch_top_buyers(address):
-    """Fetch top buyers data for the specified address, with caching."""
-    if address in top_buyers_cache:
-        logging.info(f"Using cached top_buyers data for address: {address}")
+def fetch_top_buyers(address, use_cache=True):
+    """Fetch top buyers data for the specified address, with optional caching."""
+    if use_cache and address in top_buyers_cache:
+        logging.info(f"Using cached top buyers data for address: {address}")
         return top_buyers_cache[address]
-    
+
     url = f"{TOP_BUYERS_API_BASE_URL}{address}"
-    data = fetch_data(url)
     logging.info(f"Fetching top buyers data for address: {address}")
     
+    data = fetch_data(url)
+
     if data and 'code' in data and data['code'] == 0:
-        top_buyers_cache[address] = data['data']  # Cache the data
+        if use_cache:
+            top_buyers_cache[address] = data['data']  # Cache the data
         return data['data']
     else:
         logging.error(f"No valid data returned for top buyers of address {address}")
-    return None
+        return None
 
 
 async def fetch_bubblemap_data(address, retries=3, timeout=10):
@@ -683,16 +685,23 @@ async def send_coins(channel, task_type, ctx):
                     continue  # Skip if volume is below 1000 for completing coins
                 
                 # Fetch top buyers data
-                top_buyers = fetch_top_buyers(item['address'])
-                if top_buyers is None:
-                    logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
-                    continue
+                # Fetch top buyers data only for the /new task using the cache
+                if task_type == "new":
+                    top_buyers = top_buyers_cache.get(item['address']) or fetch_top_buyers(item['address'])
+                    top_buyers_cache[item['address']] = top_buyers
 
-                holders = top_buyers.get('holders', {})
-                if check_dev_sniper_tags(holders) or check_sniper_count(holders):
-                    logging.info(f"Token {item['address']} has dev_team and sniper tags in a single wallet or too many snipers. Skipping.")
-                    continue
+                    # Check for dev_team and sniper tags only for the /new task
+                    if top_buyers is None:
+                        logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
+                        continue
 
+                    holders = top_buyers.get('holders', {})
+                    if check_dev_sniper_tags(holders) or check_sniper_count(holders):
+                        logging.info(f"Token {item['address']} has dev_team and sniper tags in a single wallet or too many snipers. Skipping.")
+                        continue
+                else:
+                    top_buyers = fetch_top_buyers(item['address'])
+                    
                 # Check if the coin was already called by the bot
                 called_by = ctx.bot.user.username
                 usd_market_cap = item.get('usd_market_cap')
