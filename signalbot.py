@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 import time
 import io
 import gzip
-
+import base64
 
 
 dotenv.load_dotenv()
@@ -83,55 +83,104 @@ status_messages = [
     "Want the best signals? DM @chakazzz 👑"
 ]
 
-def fetch_data(url):
-    """Fetch data from the specified URL with special handling for gmgn.ai."""
+main_proxy = "https://spczig9st1:9~QJmaHbtsnv73xbS8@gate.smartproxy.com:7000"
+def fetch_ip(proxy_parsed, proxy_auth_encoded):
+    """Fetch the current IP address using the proxy."""
+    conn = http.client.HTTPSConnection(proxy_parsed.hostname, proxy_parsed.port)
+    conn.set_tunnel("api.ipify.org", headers={"Proxy-Authorization": f"Basic {proxy_auth_encoded}"})
+    conn.request("GET", "/")
+    response = conn.getresponse()
+    if response.status == 200:
+        ip = response.read().decode('utf-8')
+        logging.info(f"Current IP address: {ip}")
+        return ip
+    else:
+        logging.error(f"Failed to fetch IP address: {response.status} {response.reason}")
+    conn.close()
+    return None
+
+def fetch_data(url, retries=3):
+    """Fetch data from the specified URL with special handling for gmgn.ai and using a proxy."""
     logging.info(f"Fetching data from URL: {url}")
     parsed_url = urlparse(url)
     
-    if parsed_url.netloc == "gmgn.ai":
-        conn = http.client.HTTPSConnection("gmgn.ai")
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate, br, zstd',
-            'Referer': 'https://gmgn.ai/meme?chain=sol',
-            'Alt-Used': 'gmgn.ai',
-            'Connection': 'keep-alive',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin',
-            'If-None-Match': 'W/a414-l8/w3z1JNxalxPb2NpnpiXw5qjM',
-            'TE': 'trailers',
-        }
-        conn.request("GET", f"{parsed_url.path}?{parsed_url.query}", '', headers)
-        response = conn.getresponse()
-        logging.info(f"Received response with status code: {response.status}")
-        if response.status == 200:
-            data = response.read()
-
-            # Decompress the gzip data
-            decompressed_data = gzip.GzipFile(fileobj=io.BytesIO(data)).read()
-
-            # Convert bytes to string (assuming the data is UTF-8 encoded)
-            decoded_data = decompressed_data.decode('utf-8')
-
-            return json.loads(decoded_data)
-        else:
-            logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
-    else:
-        conn = http.client.HTTPSConnection(parsed_url.netloc)
-        conn.request("GET", parsed_url.path + "?" + parsed_url.query)
-        response = conn.getresponse()
-        logging.info(f"Received response with status code: {response.status}")
-        if response.status == 200:
-            data = response.read()
-            return json.loads(data.decode('utf-8'))
-        else:
-            logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
+    # Parse the main proxy URL
+    proxy_parsed = urlparse(main_proxy)
     
-    conn.close()
+    # Encode proxy credentials
+    proxy_auth = f"{proxy_parsed.username}:{proxy_parsed.password}"
+    proxy_auth_encoded = base64.b64encode(proxy_auth.encode()).decode()
+
+    # Check IP address before fetching data
+    logging.info("Checking IP address before fetching data...")
+    fetch_ip(proxy_parsed, proxy_auth_encoded)
+
+    for attempt in range(retries):
+        if parsed_url.netloc == "gmgn.ai":
+            logging.info("Connecting to proxy for gmgn.ai...")
+            conn = http.client.HTTPSConnection(proxy_parsed.hostname, proxy_parsed.port)
+            conn.set_tunnel("gmgn.ai", headers={"Proxy-Authorization": f"Basic {proxy_auth_encoded}"})
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br, zstd',
+                'Referer': 'https://gmgn.ai/meme?chain=sol',
+                'Alt-Used': 'gmgn.ai',
+                'Connection': 'keep-alive',
+                'Sec-Fetch-Dest': 'empty',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-origin',
+                'If-None-Match': 'W/a414-l8/w3z1JNxalxPb2NpnpiXw5qjM',
+                'TE': 'trailers'
+            }
+            try:
+                conn.request("GET", f"{parsed_url.path}?{parsed_url.query}", '', headers)
+                logging.info("Request sent to gmgn.ai through proxy.")
+                response = conn.getresponse()
+                logging.info(f"Received response with status code: {response.status}")
+                if response.status == 200:
+                    data = response.read()
+
+                    # Decompress the gzip data
+                    decompressed_data = gzip.GzipFile(fileobj=io.BytesIO(data)).read()
+
+                    # Convert bytes to string (assuming the data is UTF-8 encoded)
+                    decoded_data = decompressed_data.decode('utf-8')
+
+                    return json.loads(decoded_data)
+                elif response.status == 403:
+                    logging.warning(f"Received 403 Forbidden. Retrying... ({attempt + 1}/{retries})")
+                    time.sleep(2)  # Optional: wait a bit before retrying
+                else:
+                    logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
+            except Exception as e:
+                logging.error(f"Exception occurred while connecting to gmgn.ai: {e}", exc_info=True)
+        else:
+            logging.info(f"Connecting to proxy for {parsed_url.netloc}...")
+            conn = http.client.HTTPSConnection(proxy_parsed.hostname, proxy_parsed.port)
+            conn.set_tunnel(parsed_url.netloc, headers={"Proxy-Authorization": f"Basic {proxy_auth_encoded}"})
+            try:
+                conn.request("GET", parsed_url.path + "?" + parsed_url.query)
+                logging.info(f"Request sent to {parsed_url.netloc} through proxy.")
+                response = conn.getresponse()
+                logging.info(f"Received response with status code: {response.status}")
+                if response.status == 200:
+                    data = response.read()
+                    return json.loads(data.decode('utf-8'))
+                elif response.status == 403:
+                    logging.warning(f"Received 403 Forbidden. Retrying... ({attempt + 1}/{retries})")
+                    time.sleep(3)  # Optional: wait a bit before retrying
+                else:
+                    logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
+            except Exception as e:
+                logging.error(f"Exception occurred while connecting to {parsed_url.netloc}: {e}", exc_info=True)
+            pass
+            conn.close()
+    
+    logging.error(f"Failed to fetch data from {url} after {retries} attempts.")
     return None
+
 
 def fetch_data_waf_bypass(url, retries=3, timeout=10):
     """Fetch data from the specified URL with WAF bypass, retry logic, and special handling for gmgn.ai."""
