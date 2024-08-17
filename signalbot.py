@@ -99,7 +99,7 @@ def fetch_ip(proxy_parsed, proxy_auth_encoded):
     conn.close()
     return None
 
-def fetch_data(url, retries=3):
+def fetch_data(url, retries=3, delay=3):
     """Fetch data from the specified URL with special handling for gmgn.ai and using a proxy."""
     logging.info(f"Fetching data from URL: {url}")
     parsed_url = urlparse(url)
@@ -116,25 +116,25 @@ def fetch_data(url, retries=3):
     fetch_ip(proxy_parsed, proxy_auth_encoded)
 
     for attempt in range(retries):
-        if parsed_url.netloc == "gmgn.ai":
-            logging.info("Connecting to proxy for gmgn.ai...")
-            conn = http.client.HTTPSConnection(proxy_parsed.hostname, proxy_parsed.port)
-            conn.set_tunnel("gmgn.ai", headers={"Proxy-Authorization": f"Basic {proxy_auth_encoded}"})
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0',
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate, br, zstd',
-                'Referer': 'https://gmgn.ai/meme?chain=sol',
-                'Alt-Used': 'gmgn.ai',
-                'Connection': 'keep-alive',
-                'Sec-Fetch-Dest': 'empty',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Site': 'same-origin',
-                'If-None-Match': 'W/a414-l8/w3z1JNxalxPb2NpnpiXw5qjM',
-                'TE': 'trailers'
-            }
-            try:
+        try:
+            if parsed_url.netloc == "gmgn.ai":
+                logging.info("Connecting to proxy for gmgn.ai...")
+                conn = http.client.HTTPSConnection(proxy_parsed.hostname, proxy_parsed.port)
+                conn.set_tunnel("gmgn.ai", headers={"Proxy-Authorization": f"Basic {proxy_auth_encoded}"})
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0',
+                    'Accept': 'application/json, text/plain, */*',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate, br, zstd',
+                    'Referer': 'https://gmgn.ai/meme?chain=sol',
+                    'Alt-Used': 'gmgn.ai',
+                    'Connection': 'keep-alive',
+                    'Sec-Fetch-Dest': 'empty',
+                    'Sec-Fetch-Mode': 'cors',
+                    'Sec-Fetch-Site': 'same-origin',
+                    'If-None-Match': 'W/a414-l8/w3z1JNxalxPb2NpnpiXw5qjM',
+                    'TE': 'trailers'
+                }
                 conn.request("GET", f"{parsed_url.path}?{parsed_url.query}", '', headers)
                 logging.info("Request sent to gmgn.ai through proxy.")
                 response = conn.getresponse()
@@ -151,17 +151,14 @@ def fetch_data(url, retries=3):
                         decoded_data = data.decode('utf-8')
                     return json.loads(decoded_data)
                 elif response.status == 403:
-                    logging.warning(f"Received 403 Forbidden. Retrying... ({attempt + 1}/{retries})")
-                    time.sleep(2)  # Optional: wait a bit before retrying
+                    logging.warning(f"Received 403 Forbidden. Retrying after delay... ({attempt + 1}/{retries})")
+                    time.sleep(delay * (attempt + 1))  # Exponential backoff
                 else:
                     logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
-            except Exception as e:
-                logging.error(f"Exception occurred while connecting to gmgn.ai: {e}", exc_info=True)
-        else:
-            logging.info(f"Connecting to proxy for {parsed_url.netloc}...")
-            conn = http.client.HTTPSConnection(proxy_parsed.hostname, proxy_parsed.port)
-            conn.set_tunnel(parsed_url.netloc, headers={"Proxy-Authorization": f"Basic {proxy_auth_encoded}"})
-            try:
+            else:
+                logging.info(f"Connecting to proxy for {parsed_url.netloc}...")
+                conn = http.client.HTTPSConnection(proxy_parsed.hostname, proxy_parsed.port)
+                conn.set_tunnel(parsed_url.netloc, headers={"Proxy-Authorization": f"Basic {proxy_auth_encoded}"})
                 conn.request("GET", parsed_url.path + "?" + parsed_url.query)
                 logging.info(f"Request sent to {parsed_url.netloc} through proxy.")
                 response = conn.getresponse()
@@ -170,18 +167,20 @@ def fetch_data(url, retries=3):
                     data = response.read()
                     return json.loads(data.decode('utf-8'))
                 elif response.status == 403:
-                    logging.warning(f"Received 403 Forbidden. Retrying... ({attempt + 1}/{retries})")
-                    time.sleep(2)  # Optional: wait a bit before retrying
+                    logging.warning(f"Received 403 Forbidden. Retrying after delay... ({attempt + 1}/{retries})")
+                    time.sleep(delay * (attempt + 1))  # Exponential backoff
                 else:
                     logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
-            except Exception as e:
-                logging.error(f"Exception occurred while connecting to {parsed_url.netloc}: {e}", exc_info=True)
-            pass
+        except http.client.RemoteDisconnected as e:
+            logging.error(f"RemoteDisconnected occurred: {e}. Retrying... ({attempt + 1}/{retries})")
+            time.sleep(2 ** attempt)  # Exponential backoff
+        except Exception as e:
+            logging.error(f"Exception occurred while connecting to {parsed_url.netloc}: {e}", exc_info=True)
+        finally:
             conn.close()
     
     logging.error(f"Failed to fetch data from {url} after {retries} attempts.")
     return None
-
 
 async def fetch_data_waf_bypass2(url, retries=3, timeout=10):
     """Fetch data from the specified URL with WAF bypass, retry logic, and timeout."""
@@ -356,21 +355,25 @@ def fetch_top_buyers(address):
     return None
 
 
-async def fetch_bubblemap_data(address):
-    """Fetch bubblemap data for the specified address."""
+async def fetch_bubblemap_data(address, retries=3, timeout=10):
+    """Fetch bubblemap data for the specified address with retry logic."""
     url = f"https://europe-west1-cryptos-tools.cloudfunctions.net/get-bubble-graph-data?token={address}&chain=sol&pumpfun=true"
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=5) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data
-                elif response.status == 500:
-                    logging.error(f"Server error occurred while fetching bubblemap data for address {address}")
-                else:
-                    logging.error(f"Unexpected response status {response.status} while fetching bubblemap data for address {address}")
-    except aiohttp.ClientError as e:
-        logging.error(f"Request exception occurred: {e}")
+    for attempt in range(retries):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=timeout) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data
+                    elif response.status == 500:
+                        logging.error(f"Server error occurred while fetching bubblemap data for address {address}")
+                    else:
+                        logging.error(f"Unexpected response status {response.status} while fetching bubblemap data for address {address}")
+        except aiohttp.ClientError as e:
+            logging.error(f"Request exception occurred: {e}")
+        except asyncio.TimeoutError:
+            logging.error(f"Timeout occurred while fetching bubblemap data for address {address}. Retrying... ({attempt + 1}/{retries})")
+            await asyncio.sleep(2 ** attempt)  # Exponential backoff
     return "N/A"
 
 def count_connected_wallets(bubblemap_data):
@@ -734,8 +737,8 @@ async def send_coins(channel, task_type, ctx):
                 await send_or_update_embed(channel, item, task_type)
             await delete_old_messages(channel, valid_addresses, task_type)
     except Exception as e:
-        logging.error(f"Error in send_coins: {e}")
-
+        logging.error(f"Error in send_coins: {e}", exc_info=True)
+        
 def build_query_url(base_url, params):
     """Build query URL from the base URL and parameters."""
     query_url = f"{base_url}?"
@@ -1025,7 +1028,7 @@ async def loop_send_coins(channel, task_type, ctx):
             await send_coins(channel, task_type, ctx)
         except Exception as e:
             logging.error(f"Error in loop_send_coins for {task_type}: {e}")
-        await asyncio.sleep(25)
+        await asyncio.sleep(30)
 
 def get_socials(social_links):
     """Generate social media links for the embed."""
