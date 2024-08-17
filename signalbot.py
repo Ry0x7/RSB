@@ -19,7 +19,8 @@ import time
 import io
 import gzip
 import base64
-
+import concurrent.futures
+import threading
 
 dotenv.load_dotenv()
 
@@ -130,8 +131,8 @@ def fetch_ip(proxy_parsed, proxy_auth_encoded):
     conn.close()
     return None
 
-def fetch_data(url, retries=3, delay=3):
-    """Fetch data from the specified URL with special handling for gmgn.ai and using a proxy."""
+def fetch_data_sync(url, retries=3, delay=3):
+    """Synchronous fetch data function with retries and delay."""
     logging.info(f"Fetching data from URL: {url}")
     parsed_url = urlparse(url)
     
@@ -173,17 +174,14 @@ def fetch_data(url, retries=3, delay=3):
                 if response.status == 200:
                     data = response.read()
                     if response.getheader('Content-Encoding') == 'gzip':
-                        # Decompress the gzip data
                         decompressed_data = gzip.GzipFile(fileobj=io.BytesIO(data)).read()
-                        # Convert bytes to string (assuming the data is UTF-8 encoded)
                         decoded_data = decompressed_data.decode('utf-8')
                     else:
-                        # Directly decode the data if it's not gzipped
                         decoded_data = data.decode('utf-8')
                     return json.loads(decoded_data)
                 elif response.status == 403:
                     logging.warning(f"Received 403 Forbidden. Retrying after delay... ({attempt + 1}/{retries})")
-                    time.sleep(delay * (attempt + 1))  # Exponential backoff
+                    time.sleep(delay)  # Add delay before retrying
                 else:
                     logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
             else:
@@ -199,19 +197,27 @@ def fetch_data(url, retries=3, delay=3):
                     return json.loads(data.decode('utf-8'))
                 elif response.status == 403:
                     logging.warning(f"Received 403 Forbidden. Retrying after delay... ({attempt + 1}/{retries})")
-                    time.sleep(delay * (attempt + 1))  # Exponential backoff
+                    time.sleep(delay)  # Add delay before retrying
                 else:
                     logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
         except http.client.RemoteDisconnected as e:
-            logging.error(f"RemoteDisconnected occurred: {e}. Retrying... ({attempt + 1}/{retries})")
-            time.sleep(2 ** attempt)  # Exponential backoff
+            logging.error(f"RemoteDisconnected occurred: {e}. Retrying after delay... ({attempt + 1}/{retries})")
+            time.sleep(delay)  # Add delay before retrying
         except Exception as e:
             logging.error(f"Exception occurred while connecting to {parsed_url.netloc}: {e}", exc_info=True)
+            time.sleep(delay)  # Add delay before retrying
         finally:
             conn.close()
     
     logging.error(f"Failed to fetch data from {url} after {retries} attempts.")
     return None
+
+async def fetch_data(url, retries=3, delay=3):
+    """Asynchronously fetch data by running the sync fetch in a separate thread."""
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        result = await loop.run_in_executor(pool, fetch_data_sync, url, retries, delay)
+    return result
 
 async def fetch_data_waf_bypass2(url, retries=3, timeout=10):
     """Fetch data from the specified URL with WAF bypass, retry logic, and timeout."""
@@ -368,7 +374,7 @@ async def fetch_wallet_counts(address):
         logging.error(f"No valid data returned for wallet counts of address {address}")
     return None
 
-def fetch_top_buyers(address, use_cache=True):
+async def fetch_top_buyers(address, use_cache=True):
     """Fetch top buyers data for the specified address, with optional caching."""
     if use_cache and address in top_buyers_cache:
         logging.info(f"Using cached top buyers data for address: {address}")
@@ -377,7 +383,7 @@ def fetch_top_buyers(address, use_cache=True):
     url = f"{TOP_BUYERS_API_BASE_URL}{address}"
     logging.info(f"Fetching top buyers data for address: {address}")
     
-    data = fetch_data(url)
+    data = await fetch_data(url)
 
     if data and 'code' in data and data['code'] == 0:
         if use_cache:
@@ -458,7 +464,7 @@ async def format_embed(item, updated=False, trend="", percentage_change="", tren
     else:
         # Add fields specific to send_coins
         social_links = get_social_links(item)
-        top_buyers = fetch_top_buyers(item['address'])
+        top_buyers = await fetch_top_buyers(item['address'])
         bubblemap_data = await fetch_bubblemap_data(item['address'])
         connected_wallets = count_connected_wallets(bubblemap_data)
         
@@ -596,19 +602,7 @@ async def send_or_update_embed(channel, item, task_type):
     if item['address'] in sent_messages_task:
         logging.info(f"Skipping {item['name']} ({item['symbol']}) as it has already been sent.")
         return
-    
-    top_buyers = top_buyers_cache.get(item['address']) or fetch_top_buyers(item['address'])
-    top_buyers_cache[item['address']] = top_buyers
 
-    # Check for dev_team and sniper tags only for the /new task
-    if top_buyers is None:
-        logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
-        return
-
-    holders = top_buyers.get('holders', {})
-    if check_dev_sniper_tags(holders) or check_sniper_count(holders):
-        logging.info(f"Token {item['address']} has dev_team and sniper tags in a single wallet or too many snipers. Skipping.")
-        return
     
     embed = await format_embed(item)
     if not embed:
@@ -663,7 +657,7 @@ async def send_coins(channel, task_type, ctx):
     }
     try:
         url = build_query_url(BASE_URL, params[task_type])
-        data = fetch_data(url)
+        data = await fetch_data(url)
         logging.info(f"Fetching data for {task_type} task")
         # logging.info(f"Data: {data}")
         if data and data['data']['rank'] != last_data[channel_id][task_type]:
@@ -682,13 +676,32 @@ async def send_coins(channel, task_type, ctx):
                 
                 volume_1m = int(float(volume_1m))
                 
-                if task_type == "new" and volume_1m < 2000:
+                if task_type == "new" and volume_1m < 3500:
                     continue  # Skip if volume is below 2000 for new coins
-                elif task_type == "soaring" and volume_1m < 3000:
+                elif task_type == "soaring" and volume_1m < 5000:
                     continue  # Skip if volume is below 1500 for soaring coins
-                elif task_type == "completing" and volume_1m < 1000:
+                elif task_type == "completing" and volume_1m < 2000:
                     continue  # Skip if volume is below 1000 for completing coins
                 
+                # Fetch top buyers data only for the /new task using the cache
+                if task_type == "new":
+                    if item['address'] in top_buyers_cache:
+                        top_buyers = top_buyers_cache[item['address']]
+                    else:
+                        top_buyers = await fetch_top_buyers(item['address'])
+                        top_buyers_cache[item['address']] = top_buyers
+
+                    # Check for dev_team and sniper tags only for the /new task
+                    if top_buyers is None:
+                        logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
+                        continue
+
+                    holders = top_buyers.get('holders', {})
+                    if check_dev_sniper_tags(holders) or check_sniper_count(holders):
+                        logging.info(f"Token {item['address']} has dev_team and sniper tags in a single wallet or too many snipers. Skipping.")
+                        continue
+                else:
+                    top_buyers = await fetch_top_buyers(item['address'])
                 # Check if the coin was already called by the bot
                 called_by = ctx.bot.user.username
                 usd_market_cap = item.get('usd_market_cap')
@@ -1123,7 +1136,7 @@ async def ca(ctx, address: str):
         url = f"{FETCH_COIN_DATA}{address}"
         
         # Fetch data synchronously
-        data = fetch_data(url)
+        data = await fetch_data(url)
 
         if data and 'data' in data and 'token' in data['data']:
             item = data['data']['token']
@@ -1132,7 +1145,7 @@ async def ca(ctx, address: str):
 
             # Fetch data from synchronous functions or properly await asynchronous ones
             connected_wallets = count_connected_wallets(await fetch_bubblemap_data(item['address']))
-            topbuyers = fetch_top_buyers(item['address'])
+            topbuyers = await fetch_top_buyers(item['address'])
             socials = get_socials(item.get('social_links', {}))
 
             guildname = ctx.guild.name
