@@ -12,7 +12,12 @@ import re
 import random
 from interactions import listen, Client
 from bs4 import BeautifulSoup
-
+import http.client
+import json
+from urllib.parse import urlparse
+import time
+import io
+import gzip
 
 
 
@@ -49,6 +54,8 @@ sent_messages = {}
 volume_check = {}
 processed_message_ids = set()
 last_message_time = None
+top_buyers_cache = {}
+cache_timeout = 300  # Cache timeout in seconds (e.g., 5 minutes)
 
 # Maximum number of concurrent tasks
 MAX_CONCURRENT_TASKS = 2
@@ -76,23 +83,134 @@ status_messages = [
     "Want the best signals? DM @chakazzz 👑"
 ]
 
-
-async def fetch_data(url):
-    """Fetch data from the specified URL."""
+def fetch_data(url):
+    """Fetch data from the specified URL with special handling for gmgn.ai."""
     logging.info(f"Fetching data from URL: {url}")
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                logging.info(f"Received response with status code: {response.status}")
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    logging.error(f"Error fetching data from {url}: {response.status} {await response.text()}")
-    except aiohttp.ClientError as e:
-        logging.error(f"Request exception occurred: {e}")
+    parsed_url = urlparse(url)
+    
+    if parsed_url.netloc == "gmgn.ai":
+        conn = http.client.HTTPSConnection("gmgn.ai")
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
+            'Referer': 'https://gmgn.ai/meme?chain=sol',
+            'Alt-Used': 'gmgn.ai',
+            'Connection': 'keep-alive',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin',
+            'If-None-Match': 'W/a414-l8/w3z1JNxalxPb2NpnpiXw5qjM',
+            'TE': 'trailers',
+        }
+        conn.request("GET", f"{parsed_url.path}?{parsed_url.query}", '', headers)
+        response = conn.getresponse()
+        logging.info(f"Received response with status code: {response.status}")
+        if response.status == 200:
+            data = response.read()
+
+            # Decompress the gzip data
+            decompressed_data = gzip.GzipFile(fileobj=io.BytesIO(data)).read()
+
+            # Convert bytes to string (assuming the data is UTF-8 encoded)
+            decoded_data = decompressed_data.decode('utf-8')
+
+            return json.loads(decoded_data)
+        else:
+            logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
+    else:
+        conn = http.client.HTTPSConnection(parsed_url.netloc)
+        conn.request("GET", parsed_url.path + "?" + parsed_url.query)
+        response = conn.getresponse()
+        logging.info(f"Received response with status code: {response.status}")
+        if response.status == 200:
+            data = response.read()
+            return json.loads(data.decode('utf-8'))
+        else:
+            logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
+    
+    conn.close()
     return None
 
-async def fetch_data_waf_bypass(url, retries=3, timeout=10):
+def fetch_data_waf_bypass(url, retries=3, timeout=10):
+    """Fetch data from the specified URL with WAF bypass, retry logic, and special handling for gmgn.ai."""
+    logging.info(f"Fetching data from URL with WAF bypass: {url}")
+    parsed_url = urlparse(url)
+
+    if parsed_url.netloc == "gmgn.ai":
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
+            'Referer': 'https://gmgn.ai/meme?chain=sol',
+            'Alt-Used': 'gmgn.ai',
+            'Connection': 'keep-alive',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin',
+            'If-None-Match': 'W/a414-l8/w3z1JNxalxPb2NpnpiXw5qjM',
+            'TE': 'trailers',
+        }
+
+        for attempt in range(retries):
+            try:
+                conn = http.client.HTTPSConnection("gmgn.ai", timeout=timeout)
+                conn.request("GET", f"{parsed_url.path}?{parsed_url.query}", '', headers)
+                response = conn.getresponse()
+                logging.info(f"Received response with status code: {response.status}")
+                if response.status == 200:
+                    data = response.read()
+
+                    # Decompress the gzip data
+                    decompressed_data = gzip.GzipFile(fileobj=io.BytesIO(data)).read()
+
+                    # Convert bytes to string (assuming the data is UTF-8 encoded)
+                    decoded_data = decompressed_data.decode('utf-8')
+
+                    return json.loads(decoded_data)
+                else:
+                    logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
+            except Exception as e:
+                logging.error(f"Request exception occurred: {e}")
+                if attempt < retries - 1:
+                    logging.info(f"Retrying... ({attempt + 1}/{retries})")
+                    time.sleep(2)  # Optional: wait a bit before retrying
+                else:
+                    logging.error(f"Failed to fetch data after {retries} attempts.")
+            finally:
+                conn.close()
+    else:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+
+        for attempt in range(retries):
+            try:
+                conn = http.client.HTTPSConnection(parsed_url.netloc, timeout=timeout)
+                conn.request("GET", parsed_url.path + "?" + parsed_url.query, '', headers)
+                response = conn.getresponse()
+                logging.info(f"Received response with status code: {response.status}")
+                if response.status == 200:
+                    data = response.read()
+                    return json.loads(data.decode('utf-8'))
+                else:
+                    logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
+            except Exception as e:
+                logging.error(f"Request exception occurred: {e}")
+                if attempt < retries - 1:
+                    logging.info(f"Retrying... ({attempt + 1}/{retries})")
+                    time.sleep(2)  # Optional: wait a bit before retrying
+                else:
+                    logging.error(f"Failed to fetch data after {retries} attempts.")
+            finally:
+                conn.close()
+    
+    return None
+
+
+async def fetch_data_waf_bypass2(url, retries=3, timeout=10):
     """Fetch data from the specified URL with WAF bypass, retry logic, and timeout."""
     logging.info(f"Fetching data from URL with WAF bypass: {url}")
     headers = {
@@ -115,7 +233,6 @@ async def fetch_data_waf_bypass(url, retries=3, timeout=10):
             else:
                 logging.error(f"Failed to fetch data after {retries} attempts.")
     return None
-
 
 def get_time_since_creation(created_timestamp):
     """Calculate the time since the coin was created."""
@@ -172,7 +289,7 @@ def extract_telegram_links(text):
 async def fetch_telegram_links(address, symbol, name):
     """Fetch Telegram links from replies API and filter valid links."""
     url = f"{SEARCH_API_BASE_URL}replies/{address}"
-    data = await fetch_data_waf_bypass(url)
+    data = await fetch_data_waf_bypass2(url)
     logging.info(f"Fetching Telegram links for address: {address}")
     if data:
         valid_links = set()
@@ -248,16 +365,23 @@ async def fetch_wallet_counts(address):
         logging.error(f"No valid data returned for wallet counts of address {address}")
     return None
 
-async def fetch_top_buyers(address):
-    """Fetch top buyers data for the specified address."""
+def fetch_top_buyers(address):
+    """Fetch top buyers data for the specified address, with caching."""
+    if address in top_buyers_cache:
+        logging.info(f"Using cached top_buyers data for address: {address}")
+        return top_buyers_cache[address]
+    
     url = f"{TOP_BUYERS_API_BASE_URL}{address}"
-    data = await fetch_data(url)
+    data = fetch_data(url)
     logging.info(f"Fetching top buyers data for address: {address}")
-    if data and data['code'] == 0:
+    
+    if data and 'code' in data and data['code'] == 0:
+        top_buyers_cache[address] = data['data']  # Cache the data
         return data['data']
     else:
         logging.error(f"No valid data returned for top buyers of address {address}")
     return None
+
 
 async def fetch_bubblemap_data(address):
     """Fetch bubblemap data for the specified address."""
@@ -326,7 +450,7 @@ async def format_embed(item, updated=False, trend="", percentage_change="", tren
     else:
         # Add fields specific to send_coins
         social_links = get_social_links(item)
-        top_buyers = await fetch_top_buyers(item['address'])
+        top_buyers = fetch_top_buyers(item['address'])
         bubblemap_data = await fetch_bubblemap_data(item['address'])
         connected_wallets = count_connected_wallets(bubblemap_data)
         
@@ -538,10 +662,11 @@ async def send_coins(channel, task_type, ctx):
             'limit': '50',
             'orderby': 'created_timestamp',
             'direction': 'desc',
-            'soaring': 'true',
+            'new_creation': 'true',
             'max_marketcap': '9000',
-            'min_progress': '0.05',
             'max_created': '10m',
+            'min_holder_count': '3',
+            'min_volume': '1000',
         },
         "completing": {
             'limit': '100',
@@ -554,7 +679,9 @@ async def send_coins(channel, task_type, ctx):
     }
     try:
         url = build_query_url(BASE_URL, params[task_type])
-        data = await fetch_data(url)
+        data = fetch_data(url)
+        logging.info(f"Fetching data for {task_type} task")
+        # logging.info(f"Data: {data}")
         if data and data['data']['rank'] != last_data[channel_id][task_type]:
             last_data[channel_id][task_type] = data['data']['rank']
             valid_addresses = {item['address'] for item in data['data']['rank']}
@@ -572,7 +699,7 @@ async def send_coins(channel, task_type, ctx):
                 
                 volume_1m = int(float(volume_1m))
                 
-                if task_type == "new" and volume_1m < 2000:
+                if task_type == "new" and volume_1m < 1000:
                     continue  # Skip if volume is below 2000 for new coins
                 elif task_type == "soaring" and volume_1m < 1500:
                     continue  # Skip if volume is below 1500 for soaring coins
@@ -580,11 +707,11 @@ async def send_coins(channel, task_type, ctx):
                     continue  # Skip if volume is below 1000 for completing coins
                 
                 # Fetch top buyers data
-                top_buyers = await fetch_top_buyers(item['address'])
+                top_buyers = fetch_top_buyers(item['address'])
                 if top_buyers is None:
                     logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
                     continue
-                
+
                 holders = top_buyers.get('holders', {})
                 if check_dev_sniper_tags(holders) or check_sniper_count(holders):
                     logging.info(f"Token {item['address']} has dev_team and sniper tags in a single wallet or too many snipers. Skipping.")
@@ -924,7 +1051,7 @@ async def loop_send_coins(channel, task_type, ctx):
             await send_coins(channel, task_type, ctx)
         except Exception as e:
             logging.error(f"Error in loop_send_coins for {task_type}: {e}")
-        await asyncio.sleep(3)
+        await asyncio.sleep(25)
 
 def get_socials(social_links):
     """Generate social media links for the embed."""
@@ -1045,7 +1172,7 @@ async def generate_embed_ca(item, topbuyers, socials, connected_wallets, called_
         logging.error(f"Error in generate_embed_ca: {e}")
         return None
 
-    
+
 @interactions.slash_command(
     name="ca",
     description="Check the current market cap of a coin.",
@@ -1064,21 +1191,23 @@ async def ca(ctx, address: str):
         logging.info(f"Starting /ca command for address: {address}")
         await ctx.defer()
         url = f"{FETCH_COIN_DATA}{address}"
-        data = await fetch_data(url)
+        
+        # Fetch data synchronously
+        data = fetch_data(url)
 
         if data and 'data' in data and 'token' in data['data']:
             item = data['data']['token']
             coin_key = (item['name'], item['symbol'], item['address'])
             name_dc = ctx.author.global_name
 
+            # Fetch data from synchronous functions or properly await asynchronous ones
             connected_wallets = count_connected_wallets(await fetch_bubblemap_data(item['address']))
-            topbuyers = await fetch_top_buyers(item['address'])
+            topbuyers = fetch_top_buyers(item['address'])
             socials = get_socials(item.get('social_links', {}))
 
             guildname = ctx.guild.name
-            coins_collection = db[f'coins_{guildname}']  # Define coins_collection based on the guild name
+            coins_collection = db[f'coins_{guildname}']
 
-            # Check if the coin is already in seen_coins and in the database
             existing_coin = coins_collection.find_one({'address': item['address']})
 
             if coin_key not in seen_coins and not existing_coin:
