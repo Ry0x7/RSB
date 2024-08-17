@@ -141,13 +141,14 @@ def fetch_data(url, retries=3):
                 logging.info(f"Received response with status code: {response.status}")
                 if response.status == 200:
                     data = response.read()
-
-                    # Decompress the gzip data
-                    decompressed_data = gzip.GzipFile(fileobj=io.BytesIO(data)).read()
-
-                    # Convert bytes to string (assuming the data is UTF-8 encoded)
-                    decoded_data = decompressed_data.decode('utf-8')
-
+                    if response.getheader('Content-Encoding') == 'gzip':
+                        # Decompress the gzip data
+                        decompressed_data = gzip.GzipFile(fileobj=io.BytesIO(data)).read()
+                        # Convert bytes to string (assuming the data is UTF-8 encoded)
+                        decoded_data = decompressed_data.decode('utf-8')
+                    else:
+                        # Directly decode the data if it's not gzipped
+                        decoded_data = data.decode('utf-8')
                     return json.loads(decoded_data)
                 elif response.status == 403:
                     logging.warning(f"Received 403 Forbidden. Retrying... ({attempt + 1}/{retries})")
@@ -170,7 +171,7 @@ def fetch_data(url, retries=3):
                     return json.loads(data.decode('utf-8'))
                 elif response.status == 403:
                     logging.warning(f"Received 403 Forbidden. Retrying... ({attempt + 1}/{retries})")
-                    time.sleep(3)  # Optional: wait a bit before retrying
+                    time.sleep(2)  # Optional: wait a bit before retrying
                 else:
                     logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
             except Exception as e:
@@ -179,83 +180,6 @@ def fetch_data(url, retries=3):
             conn.close()
     
     logging.error(f"Failed to fetch data from {url} after {retries} attempts.")
-    return None
-
-
-def fetch_data_waf_bypass(url, retries=3, timeout=10):
-    """Fetch data from the specified URL with WAF bypass, retry logic, and special handling for gmgn.ai."""
-    logging.info(f"Fetching data from URL with WAF bypass: {url}")
-    parsed_url = urlparse(url)
-
-    if parsed_url.netloc == "gmgn.ai":
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate, br, zstd',
-            'Referer': 'https://gmgn.ai/meme?chain=sol',
-            'Alt-Used': 'gmgn.ai',
-            'Connection': 'keep-alive',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin',
-            'If-None-Match': 'W/a414-l8/w3z1JNxalxPb2NpnpiXw5qjM',
-            'TE': 'trailers',
-        }
-
-        for attempt in range(retries):
-            try:
-                conn = http.client.HTTPSConnection("gmgn.ai", timeout=timeout)
-                conn.request("GET", f"{parsed_url.path}?{parsed_url.query}", '', headers)
-                response = conn.getresponse()
-                logging.info(f"Received response with status code: {response.status}")
-                if response.status == 200:
-                    data = response.read()
-
-                    # Decompress the gzip data
-                    decompressed_data = gzip.GzipFile(fileobj=io.BytesIO(data)).read()
-
-                    # Convert bytes to string (assuming the data is UTF-8 encoded)
-                    decoded_data = decompressed_data.decode('utf-8')
-
-                    return json.loads(decoded_data)
-                else:
-                    logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
-            except Exception as e:
-                logging.error(f"Request exception occurred: {e}")
-                if attempt < retries - 1:
-                    logging.info(f"Retrying... ({attempt + 1}/{retries})")
-                    time.sleep(2)  # Optional: wait a bit before retrying
-                else:
-                    logging.error(f"Failed to fetch data after {retries} attempts.")
-            finally:
-                conn.close()
-    else:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-
-        for attempt in range(retries):
-            try:
-                conn = http.client.HTTPSConnection(parsed_url.netloc, timeout=timeout)
-                conn.request("GET", parsed_url.path + "?" + parsed_url.query, '', headers)
-                response = conn.getresponse()
-                logging.info(f"Received response with status code: {response.status}")
-                if response.status == 200:
-                    data = response.read()
-                    return json.loads(data.decode('utf-8'))
-                else:
-                    logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
-            except Exception as e:
-                logging.error(f"Request exception occurred: {e}")
-                if attempt < retries - 1:
-                    logging.info(f"Retrying... ({attempt + 1}/{retries})")
-                    time.sleep(2)  # Optional: wait a bit before retrying
-                else:
-                    logging.error(f"Failed to fetch data after {retries} attempts.")
-            finally:
-                conn.close()
-    
     return None
 
 
