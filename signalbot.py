@@ -403,24 +403,31 @@ async def fetch_bubblemap_data(address, retries=3, timeout=10):
                 async with session.get(url, timeout=timeout) as response:
                     if response.status == 200:
                         data = await response.json()
-                        return data
+                        if isinstance(data, dict) and 'links' in data:
+                            return data
+                        else:
+                            logging.error(f"Unexpected data format returned for address {address}: {data}")
+                            return None
                     elif response.status == 500:
                         logging.error(f"Server error occurred while fetching bubblemap data for address {address}")
                     else:
-                        logging.error(f"Unexpected response status {response.status} while fetching bubblemap data for address {address}")
+                        logging.error(f"Unexpected response status {response.status} while fetching bubblemap data for address {address}: {await response.text()}")
         except aiohttp.ClientError as e:
             logging.error(f"Request exception occurred: {e}")
         except asyncio.TimeoutError:
             logging.error(f"Timeout occurred while fetching bubblemap data for address {address}. Retrying... ({attempt + 1}/{retries})")
             await asyncio.sleep(2 ** attempt)  # Exponential backoff
-    return "N/A"
+    return None  # Return None if all retries fail
+
 
 def count_connected_wallets(bubblemap_data):
     """Count the number of connected wallets from the bubblemap data."""
-    if not bubblemap_data:
+    if not isinstance(bubblemap_data, dict):
+        logging.error("Bubblemap data is not in the expected format.")
         return 0
     links = bubblemap_data.get('links', [])
     return len(links)
+
 
 def format_large_number(value):
     """Format large numbers into shorthand notation."""
@@ -436,7 +443,57 @@ def format_percentage(value):
         return "N/A"
     return f"{float(value) * 100:.2f}%"
 
-async def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator="", ca_data=None):
+async def delayed_purge(channel, delay=900):
+    """Purge the channel after a specified delay (default is 15 minutes)."""
+    await asyncio.sleep(delay)
+    try:
+        await channel.purge()
+        logging.info(f"Channel {channel.name} has been purged after {delay} seconds.")
+    except Exception as e:
+        logging.error(f"Error purging channel {channel.name}: {e}")
+
+def get_social_links(item):
+    """Generate social media links for the embed."""
+    twitter = item.get('twitter', '')
+    website = item.get('website', '')
+    telegram = item.get('telegram', '')
+
+    twitter_link = f"**[X](https://x.com/{twitter})**" if twitter else ""
+    website_link = f"**[Web]({website if website.startswith('http') else 'https://' + website})**" if website else ""
+    telegram_link = f"**[TG]({telegram if telegram.startswith('http') else 'https://' + telegram})**" if telegram else ""
+
+    return " **∙** ".join(filter(None, [telegram_link, twitter_link, website_link]))
+
+def check_dev_sniper_tags(holders):
+    """Check if there are wallets with both dev_team and sniper tags."""
+    for holder in holders.get('holderInfo', []):
+        if 'dev_team' in holder['maker_token_tags'] and 'sniper' in holder['maker_token_tags']:
+            return True
+    return False
+
+def check_sniper_count(holders):
+    """Check if there are more than 5 sniper wallets."""
+    if 'holderInfo' not in holders:
+        return False
+    sniper_count = sum('sniper' in holder['maker_token_tags'] for holder in holders['holderInfo'])
+    return sniper_count > 4
+
+def get_socials(social_links):
+    """Generate social media links for the embed."""
+    links = []
+    
+    if social_links.get('twitter_username'):
+        links.append(f"**[X](https://twitter.com/{social_links['twitter_username']})**")
+    if social_links.get('website'):
+        website = social_links['website']
+        links.append(f"**[Web]({website if website.startswith('http') else 'https://' + website})**")
+    if social_links.get('telegram'):
+        telegram = social_links['telegram']
+        links.append(f"**[TG]({telegram if telegram.startswith('http') else 'https://' + telegram})**")
+    
+    return " **∙** ".join(links)
+
+async def format_embed(item, ca_data=None):
     """Format the embed message for the coin."""
     embed_title = f"🪙 {item['name']} (${item['symbol']})"
     embed = interactions.Embed(title="", color=0x00ff00)
@@ -479,32 +536,6 @@ async def format_embed(item, updated=False, trend="", percentage_change="", tren
     random_footer = random.choice(footer_messages)
     embed.set_footer(text=random_footer)
     return embed
-
-def get_social_links(item):
-    """Generate social media links for the embed."""
-    twitter = item.get('twitter', '')
-    website = item.get('website', '')
-    telegram = item.get('telegram', '')
-
-    twitter_link = f"**[X](https://x.com/{twitter})**" if twitter else ""
-    website_link = f"**[Web]({website if website.startswith('http') else 'https://' + website})**" if website else ""
-    telegram_link = f"**[TG]({telegram if telegram.startswith('http') else 'https://' + telegram})**" if telegram else ""
-
-    return " **∙** ".join(filter(None, [telegram_link, twitter_link, website_link]))
-
-def check_dev_sniper_tags(holders):
-    """Check if there are wallets with both dev_team and sniper tags."""
-    for holder in holders.get('holderInfo', []):
-        if 'dev_team' in holder['maker_token_tags'] and 'sniper' in holder['maker_token_tags']:
-            return True
-    return False
-
-def check_sniper_count(holders):
-    """Check if there are more than 5 sniper wallets."""
-    if 'holderInfo' not in holders:
-        return False
-    sniper_count = sum('sniper' in holder['maker_token_tags'] for holder in holders['holderInfo'])
-    return sniper_count > 4
 
 async def generate_embed_fields(item, social_links, top_buyers, connected_wallets):
     """Generate the fields for the embed."""
@@ -584,432 +615,6 @@ async def generate_embed_fields(item, social_links, top_buyers, connected_wallet
         "**Quick Buy**": quick_buy,
         "**CTO TG**": telegram_field_value,
     }
-
-async def send_or_update_embed(channel, item, task_type):
-    """Send the embed message for the coin without updating it if already sent."""
-    guildname = channel.guild.name
-    coins_collection = db[f'coins_{guildname}']
-
-    channel_id = channel.id
-    if channel_id not in sent_messages:
-        sent_messages[channel_id] = {"soaring": {}, "new": {}, "completing": {}}
-        volume_check[channel_id] = {"soaring": {}, "new": {}, "completing": {}}
-    
-    sent_messages_task = sent_messages[channel_id][task_type]
-    
-    
-    # Check if the embed has already been sent
-    if item['address'] in sent_messages_task:
-        logging.info(f"Skipping {item['name']} ({item['symbol']}) as it has already been sent.")
-        return
-
-    
-    embed = await format_embed(item)
-    if not embed:
-        return
-    
-    try:
-        # Send the message only if it hasn't been sent already
-        message = await channel.send(embeds=[embed])
-        sent_messages_task[item['address']] = message.id
-
-    except Exception as e:
-        logging.error(f"Error in send_or_update_embed: {e}")
-
-async def send_coins(channel, task_type, ctx):
-    global last_data
-    guildname = channel.guild.name
-    coins_collection = db[f'coins_{guildname}']
-
-    channel_id = channel.id
-    if channel_id not in last_data:
-        last_data[channel_id] = {"soaring": None, "new": None, "completing": None}
-    
-    params = {
-        "soaring": {
-            'limit': '100',
-            'orderby': 'created_timestamp',
-            'direction': 'desc',
-            'soaring': 'true',
-            'min_marketcap': '9000',
-            'max_marketcap': '50000',
-            'min_holder_count': '40',
-            'max_created': '2h',
-        },
-        "new": {
-            'limit': '50',
-            'orderby': 'created_timestamp',
-            'direction': 'desc',
-            'new_creation': 'true',
-            'max_marketcap': '9000',
-            'max_created': '10m',
-            'min_holder_count': '3',
-            'min_volume': '1000',
-        },
-        "completing": {
-            'limit': '100',
-            'orderby': 'usd_market_cap',
-            'direction': 'desc',
-            'pump': 'true',
-            'min_progress': '0.8',
-            'max_created': '2h',
-        }
-    }
-    try:
-        url = build_query_url(BASE_URL, params[task_type])
-        data = await fetch_data(url)
-        logging.info(f"Fetching data for {task_type} task")
-        # logging.info(f"Data: {data}")
-        if data and data['data']['rank'] != last_data[channel_id][task_type]:
-            last_data[channel_id][task_type] = data['data']['rank']
-            for item in data['data']['rank']:
-                coin_key = (item['name'], item['symbol'])
-                
-                # Check for duplicate tickers
-                if item['symbol'] in seen_tickers and seen_tickers[item['symbol']] != item['address']:
-                    continue
-                
-                # Conditional filtering based on task_type
-                volume_1m = item.get('volume_1m')
-                if volume_1m is None:
-                    continue  # Skip this item if volume_1m is None
-                
-                volume_1m = int(float(volume_1m))
-                
-                if task_type == "new" and volume_1m < 3500:
-                    continue  # Skip if volume is below 2000 for new coins
-                elif task_type == "soaring" and volume_1m < 5000:
-                    continue  # Skip if volume is below 1500 for soaring coins
-                elif task_type == "completing" and volume_1m < 2000:
-                    continue  # Skip if volume is below 1000 for completing coins
-                
-                # Fetch top buyers data only for the /new task using the cache
-                if task_type == "new":
-                    if item['address'] in top_buyers_cache:
-                        top_buyers = top_buyers_cache[item['address']]
-                    else:
-                        top_buyers = await fetch_top_buyers(item['address'])
-                        top_buyers_cache[item['address']] = top_buyers
-
-                    # Check for dev_team and sniper tags only for the /new task
-                    if top_buyers is None:
-                        logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
-                        continue
-
-                    holders = top_buyers.get('holders', {})
-                    if check_dev_sniper_tags(holders) or check_sniper_count(holders):
-                        logging.info(f"Token {item['address']} has dev_team and sniper tags in a single wallet or too many snipers. Skipping.")
-                        continue
-                else:
-                    top_buyers = await fetch_top_buyers(item['address'])
-                # Check if the coin was already called by the bot
-                called_by = ctx.bot.user.username
-                usd_market_cap = item.get('usd_market_cap')
-                
-                if usd_market_cap is None:
-                    continue  # Skip this item if usd_market_cap is None
-                
-                usd_market_cap = int(float(usd_market_cap))
-                
-                if coin_key not in seen_coins:
-                    seen_coins[coin_key] = {
-                        'address': item['address'],
-                        'called_mcap': usd_market_cap,
-                        'market_cap': usd_market_cap,
-                        'called_at': datetime.now(tz=timezone.utc),
-                        'called_by': called_by
-                    }
-                    seen_tickers[item['symbol']] = item['address']
-                    update_seen_coin(
-                        item['name'], item['symbol'], item['address'],
-                        usd_market_cap,
-                        usd_market_cap,
-                        datetime.now(tz=timezone.utc),
-                        called_by,
-                        guildname
-                    )
-                else:
-                    seen_coins[coin_key]['market_cap'] = usd_market_cap
-                    # Only update 'called_by' if it's not already set
-                    existing_called_by = seen_coins[coin_key].get('called_by')
-                    if not existing_called_by:
-                        seen_coins[coin_key]['called_by'] = called_by
-                    update_seen_coin(
-                        item['name'], item['symbol'], item['address'],
-                        seen_coins[coin_key]['called_mcap'],
-                        seen_coins[coin_key]['market_cap'],
-                        seen_coins[coin_key]['called_at'],
-                        seen_coins[coin_key]['called_by'],
-                        guildname
-                    )
-                
-                await send_or_update_embed(channel, item, task_type)
-    except Exception as e:
-        logging.error(f"Error in send_coins: {e}", exc_info=True)
-        
-def build_query_url(base_url, params):
-    """Build query URL from the base URL and parameters."""
-    query_url = f"{base_url}?"
-    for key, value in params.items():
-        query_url += f"{key}={value}&"
-    return query_url.strip('&')
-
-async def fetch_current_market_cap(address):
-    """Fetch the current market cap for the given address."""
-    url = f"{FETCH_COIN_DATA}{address}"
-    data = await fetch_data(url)
-    if data and 'data' in data and len(data['data']) > 0:
-        return int(float(data['data'][0]['market_cap']))
-    else:
-        logging.error(f"No valid data returned for address {address}")
-    return None
-
-@listen()
-async def on_ready():
-    """Event handler for when the bot is ready."""
-    # Access the bot's user information
-    bot_user = bot.user
-
-    # Log the bot's username
-    logging.info(f'Bot logged in as {bot_user.username}')
-
-    # Set a random bot status from the predefined status messages
-    random_status = random.choice(status_messages)
-    await bot.change_presence(
-        activity=interactions.Activity(
-            name=random_status,
-            type=interactions.ActivityType.WATCHING
-        ),
-        status=interactions.Status.ONLINE
-    )
-
-    # Load seen_coins from the database on startup
-    for guild in bot.guilds:
-        seen_coins.update(get_seen_coins(guild.name))
-
-    
-async def change_status_loop():
-    """Loop to change the bot's status every minute."""
-    while True:
-        logging.info("Changing status...")
-        random_status = random.choice(status_messages)
-        logging.info(f"Selected status: {random_status}")
-        try:
-            await bot.change_presence(
-                activity=interactions.Activity(
-                    name=random_status, 
-                    type=interactions.ActivityType.WATCHING
-                ),
-                status=interactions.StatusType.ONLINE
-            )
-            logging.info(f"Presence successfully set to: {random_status}")
-        except Exception as e:
-            logging.error(f"Failed to change presence: {e}")
-        
-        logging.info("Sleeping for 15 seconds.")
-        await asyncio.sleep(15)  # Delay for 1 minute (60 seconds)
-        
-async def admin_command(ctx):
-    """Check if the user has admin permissions."""
-    owner_id = "239243874529312768"  # Replace with the actual owner ID
-    guild = ctx.guild  # Ensure this command is used in a guild
-
-    if guild is None:
-        return False  # Return False if not in a guild (e.g., in a DM)
-
-    member = ctx.author  # Get the member object for the author
-
-    # Allow all commands for the owner
-    if ctx.author.id == int(owner_id):
-        return True
-
-    # Check if the user has Manage Guild or Administrator permissions
-    if member.has_permission(interactions.Permissions.MANAGE_GUILD) or member.has_permission(interactions.Permissions.ADMINISTRATOR):
-        return True
-
-    return False
-
-
-async def start_task(ctx, task_type, role=None):
-    """Start a task to send coin information."""
-    if ctx.channel.id in running_tasks:
-        if task_type in running_tasks[ctx.channel.id]:
-            await ctx.send(f'Task {task_type.capitalize()} is already running in this channel.', ephemeral=True)
-            return
-    await ctx.send(f'Grabbing {task_type.capitalize()} Coins for the BAGSS! 👜', ephemeral=True)
-    scheduler = await aiojobs.create_scheduler()
-    
-    if task_type == "dexsignals":
-        task = await scheduler.spawn(scrape_telegram_preview(ctx, role))
-    else:
-        task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type, ctx))
-    
-    if ctx.channel.id not in running_tasks:
-        running_tasks[ctx.channel.id] = {}
-    running_tasks[ctx.channel.id][task_type] = task
-    await ctx.send(f'Started sending {task_type} coin information. 📈', ephemeral=True)
-
-
-
-@interactions.slash_command(
-    name="soaring",
-    description="Start sending soaring coin information.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
-    dm_permission=False
-)
-async def soaring(ctx):
-    await start_task(ctx, "soaring")
-
-@interactions.slash_command(
-    name="completing",
-    description="Start sending completing coin information.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
-    dm_permission=False
-)
-async def completing(ctx):
-    await start_task(ctx, "completing")
-
-@interactions.slash_command(
-    name="new",
-    description="Start sending newly created coin information.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
-    dm_permission=False
-)
-async def new(ctx):
-    await start_task(ctx, "new")
-
-@interactions.slash_command(
-    name="stop",
-    description="Stop sending token information.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
-    dm_permission=False
-)
-async def stop(ctx):
-    if await admin_command(ctx):
-        stopped_any = False
-        if ctx.channel.id in running_tasks:
-            for task_type in ["soaring", "new", "completing", "dexsignals"]:
-                if task_type in running_tasks[ctx.channel.id]:
-                    await running_tasks[ctx.channel.id][task_type].close()
-                    del running_tasks[ctx.channel.id][task_type]
-                    stopped_any = True
-
-            await ctx.channel.purge()  # Optionally clear messages
-
-        if stopped_any:
-            await ctx.send(f'Stopped sending token information and deleted all messages in this channel. ❌', ephemeral=True)
-        else:
-            await ctx.send('No active tasks to stop in this channel. ❌', ephemeral=True)
-    else:
-        await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-
-
-@interactions.slash_command(
-    name="clear",
-    description="Clear all messages from this channel.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
-    dm_permission=False
-)
-async def clear(ctx):
-    try:
-        if not await admin_command(ctx):
-            await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-            return
-
-        await ctx.channel.purge()
-        await ctx.send('Cleared all messages from this channel. 🗑️', ephemeral=True)
-    except interactions.errors.NotFound:
-        pass
-    except Exception as e:
-        logging.error(f"Error in clear command: {e}")
-        raise e
-
-@interactions.slash_command(
-    name="reboot",
-    description="Reboot the coin information sending loops.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
-    dm_permission=False
-)
-async def reboot(ctx):
-    try:
-        if not await admin_command(ctx):
-            await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-            return
-        stopped_any = False
-        if ctx.channel.id in running_tasks:
-            for task_type in ["soaring", "new", "completing"]:
-                if task_type in running_tasks[ctx.channel.id]:
-                    await running_tasks[ctx.channel.id][task_type].close()
-                    del running_tasks[ctx.channel.id][task_type]
-                    scheduler = await aiojobs.create_scheduler()
-                    task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type))
-                    if ctx.channel.id not in running_tasks:
-                        running_tasks[ctx.channel.id] = {}
-                    running_tasks[ctx.channel.id][task_type] = task
-                    stopped_any = True
-        if stopped_any:
-            await ctx.send('Rebooted the coin information sending loops. 🔄', ephemeral=True)
-        else:
-            await ctx.send('No active tasks to reboot. ❌', ephemeral=True)
-    except Exception as e:
-        logging.error(f"Error in reboot command: {e}")
-
-@interactions.slash_command(
-    name="leaderboard",
-    description="Show the leaderboard of coins with highest market caps."
-)
-async def leaderboard(ctx):
-    try:
-        guildname = ctx.guild.name
-        coins_collection = db[f'coins_{guildname}']
-
-        coins = coins_collection.find({'called_mcap': {'$gte': 55000}})
-        
-        leaderboard_data = []
-        for coin in coins:
-            current_mcap = await fetch_current_market_cap(coin['address'])
-            if current_mcap and current_mcap >= 55000:
-                leaderboard_data.append((coin['name'], coin['symbol'], current_mcap, coin['called_mcap'], coin['called_at']))
-        
-        leaderboard_data.sort(key=lambda x: x[2], reverse=True)  # Sort by current market cap
-        
-        embed = interactions.Embed(
-            title="Leaderboard of Coins with Highest Market Caps",
-            color=0xFFD700
-        )
-        for rank, data in enumerate(leaderboard_data[:10], start=1):  # Limit to top 10
-            embed.add_field(
-                name=f"{rank}. {data[0]} ({data[1]})",
-                value=f"Current MCAP: ${format_large_number(data[2])}\nCalled at ${format_large_number(data[3])} on {data[4]}",
-                inline=False
-            )
-        await ctx.send(embeds=[embed])
-    except Exception as e:
-        logging.error(f"Error in leaderboard command: {e}")
-
-async def loop_send_coins(channel, task_type, ctx):
-    """Loop to continuously send coin information."""
-    while True:
-        try:
-            await send_coins(channel, task_type, ctx)
-        except Exception as e:
-            logging.error(f"Error in loop_send_coins for {task_type}: {e}")
-        await asyncio.sleep(30)
-
-def get_socials(social_links):
-    """Generate social media links for the embed."""
-    links = []
-    
-    if social_links.get('twitter_username'):
-        links.append(f"**[X](https://twitter.com/{social_links['twitter_username']})**")
-    if social_links.get('website'):
-        website = social_links['website']
-        links.append(f"**[Web]({website if website.startswith('http') else 'https://' + website})**")
-    if social_links.get('telegram'):
-        telegram = social_links['telegram']
-        links.append(f"**[TG]({telegram if telegram.startswith('http') else 'https://' + telegram})**")
-    
-    return " **∙** ".join(links)
 
 
 async def generate_embed_ca(item, topbuyers, socials, connected_wallets, called_by):
@@ -1116,186 +721,6 @@ async def generate_embed_ca(item, topbuyers, socials, connected_wallets, called_
         return None
 
 
-@interactions.slash_command(
-    name="ca",
-    description="Check the current market cap of a coin.",
-    dm_permission=False,
-    options=[
-        {
-            "name": "address",
-            "description": "The address of the coin.",
-            "type": 3,
-            "required": True
-        }
-    ]
-)
-async def ca(ctx, address: str):
-    try:
-        logging.info(f"Starting /ca command for address: {address}")
-        await ctx.defer()
-        url = f"{FETCH_COIN_DATA}{address}"
-        
-        # Fetch data synchronously
-        data = await fetch_data(url)
-
-        if data and 'data' in data and 'token' in data['data']:
-            item = data['data']['token']
-            coin_key = (item['name'], item['symbol'], item['address'])
-            name_dc = ctx.author.global_name
-
-            # Fetch data from synchronous functions or properly await asynchronous ones
-            connected_wallets = count_connected_wallets(await fetch_bubblemap_data(item['address']))
-            topbuyers = await fetch_top_buyers(item['address'])
-            socials = get_socials(item.get('social_links', {}))
-
-            guildname = ctx.guild.name
-            coins_collection = db[f'coins_{guildname}']
-
-            existing_coin = coins_collection.find_one({'address': item['address']})
-
-            if coin_key not in seen_coins and not existing_coin:
-                seen_coins[coin_key] = {
-                    'address': item['address'],
-                    'called_mcap': int(float(item['market_cap'])),
-                    'market_cap': int(float(item['market_cap'])),
-                    'called_at': datetime.now(tz=timezone.utc),
-                    'called_by': name_dc
-                }
-                seen_tickers[item['symbol']] = item['address']
-                update_seen_coin(
-                    item['name'], item['symbol'], item['address'],
-                    int(float(item['market_cap'])),
-                    int(float(item['market_cap'])),
-                    datetime.now(tz=timezone.utc),
-                    name_dc,
-                    guildname
-                )
-                called_by = name_dc
-            else:
-                if existing_coin:
-                    seen_coins[coin_key] = {
-                        'address': item['address'],
-                        'called_mcap': existing_coin['called_mcap'],
-                        'market_cap': int(float(item['market_cap'])),
-                        'called_at': existing_coin['called_at'],
-                        'called_by': existing_coin['called_by']
-                    }
-                called_by = seen_coins[coin_key]['called_by']
-
-            logging.info(f"Called by: {called_by}")
-            embed = await generate_embed_ca(item, topbuyers, socials, connected_wallets, called_by)
-            if embed:
-                await ctx.send(embeds=[embed])
-            else:
-                logging.error(f"No valid embed created for address {address}.")
-                await ctx.send(f"No valid data found for address {address}.")
-        else:
-            logging.error(f"Failed to fetch data for address {address}.")
-            await ctx.send(f"No valid data found for address {address}.")
-    except Exception as e:
-        logging.error(f"Error in ca command: {e}")
-        await ctx.send(f"An error occurred while processing the request.")
-
-@interactions.slash_command(
-    name="dexsignals",
-    description="Start sending signals from the DEX Paid Coins",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
-    dm_permission=False,
-    options=[
-        {
-            "name": "role",
-            "description": "The role to mention in the alerts.",
-            "type": interactions.OptionType.ROLE,
-            "required": False  # Make this option optional
-        }
-    ]
-)
-async def dexsignals(ctx, role: interactions.Role = None):
-    if await admin_command(ctx):
-        await start_task(ctx, "dexsignals", role)
-    else:
-        await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
-
-
-        
-async def scrape_telegram_preview(ctx, role):
-    """Scrape the Telegram preview page for the last three messages and send signals."""
-    url = 'https://t.me/s/dexpaidpump'
-    last_message_time = None
-    processed_addresses = set()  # Set to keep track of processed contract addresses
-
-    async with aiohttp.ClientSession() as session:
-        while True:
-            try:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        page_content = await response.text()
-                        soup = BeautifulSoup(page_content, 'html.parser')
-
-                        # Find all message blocks
-                        message_blocks = soup.find_all('div', class_='tgme_widget_message_wrap')
-
-                        # Only check the last three messages (from the bottom)
-                        message_blocks = message_blocks[-3:]
-
-                        new_addresses = set()
-
-                        for block in reversed(message_blocks):  # Process from bottom to top
-                            try:
-                                # Extract the message time
-                                message_time_element = block.find('time')
-                                if message_time_element:
-                                    message_time = message_time_element['datetime']
-
-                                    if last_message_time is None or message_time > last_message_time:
-                                        # Extract the contract address
-                                        code_element = block.find('code')
-                                        if code_element:
-                                            contract_address = code_element.get_text()
-
-                                            # Check if the address has already been processed
-                                            if contract_address not in processed_addresses:
-                                                new_addresses.add(contract_address)
-                                                processed_addresses.add(contract_address)  # Mark as processed
-                                                last_message_time = message_time
-                            except Exception as inner_e:
-                                logging.error(f"Error processing block: {inner_e}")
-
-                        if new_addresses:
-                            valid_addresses = set()
-
-                            for address in new_addresses:
-                                api_url = f"{FETCH_COIN_DATA}{address}"
-                                data = await fetch_data(api_url)
-                                if data and 'data' in data and 'token' in data['data']:
-                                    item = data['data']['token']
-
-                                    connected_wallets = count_connected_wallets(await fetch_bubblemap_data(item['address']))
-                                    socials = get_socials(item.get('social_links', {}))
-                                    topbuyers = await fetch_top_buyers(item['address'])
-
-                                    embed = await generate_simple_embed(item, socials, connected_wallets, topbuyers, role)
-                                    if embed:
-                                        if role:
-                                            await ctx.channel.send(content=f"{role.mention}", embeds=[embed])
-                                        else:
-                                            await ctx.channel.send(embeds=[embed])
-                                        valid_addresses.add(address)
-
-                            if not valid_addresses:
-                                await ctx.send('No valid data found for the extracted addresses.', ephemeral=True)
-
-                    else:
-                        logging.error(f"Failed to fetch the page, status code: {response.status}")
-
-                # Wait for 5 seconds before checking again
-                await asyncio.sleep(5)
-
-            except Exception as e:
-                logging.error(f"Error in scrape_telegram_preview: {e}", exc_info=True)
-                await asyncio.sleep(10)  # Wait before retrying
-
-                
 async def generate_simple_embed(item, socials, connected_wallets, topbuyers, role):
     """Generate a simple embed with the required fields."""
     try:
@@ -1395,6 +820,567 @@ async def generate_simple_embed(item, socials, connected_wallets, topbuyers, rol
         logging.error(f"Error in generate_simple_embed: {e}")
         return None  # Handle the error gracefully and return None
         
+
+async def send_or_update_embed(channel, item, task_type):
+    """Send the embed message for the coin along with the address outside the embed."""
+    try:
+        embed = await format_embed(item)
+        if not embed:
+            return
+
+        # Send the embed message
+        try:
+            message = await channel.send(f"{item['address']}", embeds=[embed])
+            sent_messages[channel.id][task_type][item['address']] = message.id
+        except Exception as e:
+            logging.error(f"Error sending embed for {item['name']} ({item['symbol']}): {e}")
+            return
+
+        # Start a delayed task to purge the channel after 15 minutes
+        try:
+            asyncio.create_task(delayed_purge(channel, delay=900))
+        except Exception as e:
+            logging.error(f"Error starting delayed purge task for {item['name']} ({item['symbol']}): {e}")
+
+    except Exception as e:
+        logging.error(f"Unexpected error in send_or_update_embed: {e}")
+
+
+
+async def send_coins(channel, task_type, ctx):
+    global last_data
+    guildname = channel.guild.name
+    coins_collection = db[f'coins_{guildname}']
+
+    channel_id = channel.id
+    if channel_id not in last_data:
+        last_data[channel_id] = {"soaring": None, "new": None, "completing": None}
+
+    params = {
+        "soaring": {
+            'limit': '100',
+            'orderby': 'created_timestamp',
+            'direction': 'desc',
+            'soaring': 'true',
+            'min_marketcap': '9000',
+            'max_marketcap': '50000',
+            'min_holder_count': '40',
+            'max_created': '2h',
+        },
+        "new": {
+            'limit': '50',
+            'orderby': 'created_timestamp',
+            'direction': 'desc',
+            'new_creation': 'true',
+            'max_marketcap': '9000',
+            'max_created': '10m',
+            'min_holder_count': '3',
+            'min_volume': '1000',
+        },
+        "completing": {
+            'limit': '100',
+            'orderby': 'usd_market_cap',
+            'direction': 'desc',
+            'pump': 'true',
+            'min_progress': '0.8',
+            'max_created': '2h',
+        }
+    }
+
+    try:
+        url = build_query_url(BASE_URL, params[task_type])
+        data = await fetch_data(url)
+        logging.info(f"Fetching data for {task_type} task")
+        # logging.info(f"Data: {data}")
+        if data and data['data']['rank'] != last_data[channel_id][task_type]:
+            last_data[channel_id][task_type] = data['data']['rank']
+            for item in data['data']['rank']:
+                coin_key = (item['name'], item['symbol'])
+
+                # Check if the coin was already sent in the current task
+                if item['address'] in sent_messages.get(channel_id, {}).get(task_type, {}):
+                    logging.info(f"Skipping {item['name']} ({item['symbol']}) as it has already been sent.")
+                    continue
+
+                # Check for duplicate tickers
+                if item['symbol'] in seen_tickers and seen_tickers[item['symbol']] != item['address']:
+                    continue
+
+                # Conditional filtering based on task_type
+                volume_1m = item.get('volume_1m')
+                if volume_1m is None:
+                    continue  # Skip this item if volume_1m is None
+                
+                volume_1m = int(float(volume_1m))
+                
+                if task_type == "new" and volume_1m < 3500:
+                    continue  # Skip if volume is below 3500 for new coins
+                elif task_type == "soaring" and volume_1m < 5000:
+                    continue  # Skip if volume is below 5000 for soaring coins
+                elif task_type == "completing" and volume_1m < 2000:
+                    continue  # Skip if volume is below 2000 for completing coins
+                
+                # Fetch top buyers data only for the /new task using the cache
+                if task_type == "new":
+                    if item['address'] in top_buyers_cache:
+                        top_buyers = top_buyers_cache[item['address']]
+                    else:
+                        top_buyers = await fetch_top_buyers(item['address'])
+                        top_buyers_cache[item['address']] = top_buyers
+
+                    # Check for dev_team and sniper tags only for the /new task
+                    if top_buyers is None:
+                        logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
+                        continue
+
+                    holders = top_buyers.get('holders', {})
+                    if check_dev_sniper_tags(holders) or check_sniper_count(holders):
+                        logging.info(f"Token {item['address']} has dev_team and sniper tags in a single wallet or too many snipers. Skipping.")
+                        continue
+
+                # Record the coin as seen and update the seen_coins dictionary
+                called_by = ctx.bot.user.username
+                usd_market_cap = item.get('usd_market_cap')
+                
+                if usd_market_cap is None:
+                    continue  # Skip this item if usd_market_cap is None
+                
+                usd_market_cap = int(float(usd_market_cap))
+                
+                if coin_key not in seen_coins:
+                    seen_coins[coin_key] = {
+                        'address': item['address'],
+                        'called_mcap': usd_market_cap,
+                        'market_cap': usd_market_cap,
+                        'called_at': datetime.now(tz=timezone.utc),
+                        'called_by': called_by
+                    }
+                    seen_tickers[item['symbol']] = item['address']
+                    update_seen_coin(
+                        item['name'], item['symbol'], item['address'],
+                        usd_market_cap,
+                        usd_market_cap,
+                        datetime.now(tz=timezone.utc),
+                        called_by,
+                        guildname
+                    )
+                else:
+                    seen_coins[coin_key]['market_cap'] = usd_market_cap
+                    # Only update 'called_by' if it's not already set
+                    existing_called_by = seen_coins[coin_key].get('called_by')
+                    if not existing_called_by:
+                        seen_coins[coin_key]['called_by'] = called_by
+                    update_seen_coin(
+                        item['name'], item['symbol'], item['address'],
+                        seen_coins[coin_key]['called_mcap'],
+                        seen_coins[coin_key]['market_cap'],
+                        seen_coins[coin_key]['called_at'],
+                        seen_coins[coin_key]['called_by'],
+                        guildname
+                    )
+
+                # Send the embed for the coin
+                await send_or_update_embed(channel, item, task_type)
+
+    except Exception as e:
+        logging.error(f"Error in send_coins: {e}", exc_info=True)
+
+        
+def build_query_url(base_url, params):
+    """Build query URL from the base URL and parameters."""
+    query_url = f"{base_url}?"
+    for key, value in params.items():
+        query_url += f"{key}={value}&"
+    return query_url.strip('&')
+
+async def fetch_current_market_cap(address):
+    """Fetch the current market cap for the given address."""
+    url = f"{FETCH_COIN_DATA}{address}"
+    data = await fetch_data(url)
+    if data and 'data' in data and len(data['data']) > 0:
+        return int(float(data['data'][0]['market_cap']))
+    else:
+        logging.error(f"No valid data returned for address {address}")
+    return None
+
+@listen()
+async def on_ready():
+    """Event handler for when the bot is ready."""
+    # Access the bot's user information
+    bot_user = bot.user
+
+    # Log the bot's username
+    logging.info(f'Bot logged in as {bot_user.username}')
+
+    # Set a random bot status from the predefined status messages
+    random_status = random.choice(status_messages)
+    await bot.change_presence(
+        activity=interactions.Activity(
+            name=random_status,
+            type=interactions.ActivityType.WATCHING
+        ),
+        status=interactions.Status.ONLINE
+    )
+
+    # Load seen_coins from the database on startup
+    for guild in bot.guilds:
+        seen_coins.update(get_seen_coins(guild.name))
+
+    
+async def change_status_loop():
+    """Loop to change the bot's status every minute."""
+    while True:
+        logging.info("Changing status...")
+        random_status = random.choice(status_messages)
+        logging.info(f"Selected status: {random_status}")
+        try:
+            await bot.change_presence(
+                activity=interactions.Activity(
+                    name=random_status, 
+                    type=interactions.ActivityType.WATCHING
+                ),
+                status=interactions.StatusType.ONLINE
+            )
+            logging.info(f"Presence successfully set to: {random_status}")
+        except Exception as e:
+            logging.error(f"Failed to change presence: {e}")
+        
+        logging.info("Sleeping for 15 seconds.")
+        await asyncio.sleep(15)  # Delay for 1 minute (60 seconds)
+        
+async def admin_command(ctx):
+    """Check if the user has admin permissions."""
+    owner_id = "239243874529312768"  # Replace with the actual owner ID
+    guild = ctx.guild  # Ensure this command is used in a guild
+
+    if guild is None:
+        return False  # Return False if not in a guild (e.g., in a DM)
+
+    member = ctx.author  # Get the member object for the author
+
+    # Allow all commands for the owner
+    if ctx.author.id == int(owner_id):
+        return True
+
+    # Check if the user has Manage Guild or Administrator permissions
+    if member.has_permission(interactions.Permissions.MANAGE_GUILD) or member.has_permission(interactions.Permissions.ADMINISTRATOR):
+        return True
+
+    return False
+
+
+async def start_task(ctx, task_type, role=None):
+    """Start a task to send coin information."""
+    if ctx.channel.id in running_tasks:
+        if task_type in running_tasks[ctx.channel.id]:
+            await ctx.send(f'Task {task_type.capitalize()} is already running in this channel.', ephemeral=True)
+            return
+    await ctx.send(f'Grabbing {task_type.capitalize()} Coins for the BAGSS! 👜', ephemeral=True)
+    scheduler = await aiojobs.create_scheduler()
+    
+    if task_type == "dexsignals":
+        task = await scheduler.spawn(scrape_telegram_preview(ctx, role))
+    else:
+        task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type, ctx))
+    
+    if ctx.channel.id not in running_tasks:
+        running_tasks[ctx.channel.id] = {}
+    running_tasks[ctx.channel.id][task_type] = task
+    await ctx.send(f'Started sending {task_type} coin information. 📈', ephemeral=True)
+
+    # Schedule the delayed purge
+    asyncio.create_task(delayed_purge(ctx.channel, delay=900))
+
+
+@interactions.slash_command(
+    name="soaring",
+    description="Start sending soaring coin information.",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False
+)
+async def soaring(ctx):
+    await start_task(ctx, "soaring")
+
+@interactions.slash_command(
+    name="completing",
+    description="Start sending completing coin information.",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False
+)
+async def completing(ctx):
+    await start_task(ctx, "completing")
+
+@interactions.slash_command(
+    name="new",
+    description="Start sending newly created coin information.",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False
+)
+async def new(ctx):
+    await start_task(ctx, "new")
+
+@interactions.slash_command(
+    name="stop",
+    description="Stop sending token information.",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False
+)
+async def stop(ctx):
+    if await admin_command(ctx):
+        stopped_any = False
+        if ctx.channel.id in running_tasks:
+            for task_type in ["soaring", "new", "completing", "dexsignals"]:
+                if task_type in running_tasks[ctx.channel.id]:
+                    await running_tasks[ctx.channel.id][task_type].close()
+                    del running_tasks[ctx.channel.id][task_type]
+                    stopped_any = True
+
+            await ctx.channel.purge()  # Optionally clear messages
+
+        if stopped_any:
+            await ctx.send(f'Stopped sending token information and deleted all messages in this channel. ❌', ephemeral=True)
+        else:
+            await ctx.send('No active tasks to stop in this channel. ❌', ephemeral=True)
+    else:
+        await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+
+
+@interactions.slash_command(
+    name="clear",
+    description="Clear all messages from this channel.",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False
+)
+async def clear(ctx):
+    try:
+        if not await admin_command(ctx):
+            await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+            return
+
+        await ctx.channel.purge()
+        await ctx.send('Cleared all messages from this channel. 🗑️', ephemeral=True)
+    except interactions.errors.NotFound:
+        pass
+    except Exception as e:
+        logging.error(f"Error in clear command: {e}")
+        raise e
+
+@interactions.slash_command(
+    name="reboot",
+    description="Reboot the coin information sending loops.",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False
+)
+async def reboot(ctx):
+    try:
+        if not await admin_command(ctx):
+            await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+            return
+        stopped_any = False
+        if ctx.channel.id in running_tasks:
+            for task_type in ["soaring", "new", "completing"]:
+                if task_type in running_tasks[ctx.channel.id]:
+                    await running_tasks[ctx.channel.id][task_type].close()
+                    del running_tasks[ctx.channel.id][task_type]
+                    scheduler = await aiojobs.create_scheduler()
+                    task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type))
+                    if ctx.channel.id not in running_tasks:
+                        running_tasks[ctx.channel.id] = {}
+                    running_tasks[ctx.channel.id][task_type] = task
+                    stopped_any = True
+        if stopped_any:
+            await ctx.send('Rebooted the coin information sending loops. 🔄', ephemeral=True)
+        else:
+            await ctx.send('No active tasks to reboot. ❌', ephemeral=True)
+    except Exception as e:
+        logging.error(f"Error in reboot command: {e}")
+
+async def loop_send_coins(channel, task_type, ctx):
+    """Loop to continuously send coin information."""
+    while True:
+        try:
+            await send_coins(channel, task_type, ctx)
+        except Exception as e:
+            logging.error(f"Error in loop_send_coins for {task_type}: {e}")
+        await asyncio.sleep(30)
+
+@interactions.slash_command(
+    name="ca",
+    description="Check the current market cap of a coin.",
+    dm_permission=False,
+    options=[
+        {
+            "name": "address",
+            "description": "The address of the coin.",
+            "type": 3,
+            "required": True
+        }
+    ]
+)
+async def ca(ctx, address: str):
+    try:
+        logging.info(f"Starting /ca command for address: {address}")
+        await ctx.defer()
+        url = f"{FETCH_COIN_DATA}{address}"
+        
+        # Fetch data synchronously
+        data = await fetch_data(url)
+
+        if data and 'data' in data and 'token' in data['data']:
+            item = data['data']['token']
+            coin_key = (item['name'], item['symbol'], item['address'])
+            name_dc = ctx.author.global_name
+
+            # Fetch data from synchronous functions or properly await asynchronous ones
+            connected_wallets = count_connected_wallets(await fetch_bubblemap_data(item['address']))
+            topbuyers = await fetch_top_buyers(item['address'])
+            socials = get_socials(item.get('social_links', {}))
+
+            guildname = ctx.guild.name
+            coins_collection = db[f'coins_{guildname}']
+
+            existing_coin = coins_collection.find_one({'address': item['address']})
+
+            if coin_key not in seen_coins and not existing_coin:
+                seen_coins[coin_key] = {
+                    'address': item['address'],
+                    'called_mcap': int(float(item['market_cap'])),
+                    'market_cap': int(float(item['market_cap'])),
+                    'called_at': datetime.now(tz=timezone.utc),
+                    'called_by': name_dc
+                }
+                seen_tickers[item['symbol']] = item['address']
+                update_seen_coin(
+                    item['name'], item['symbol'], item['address'],
+                    int(float(item['market_cap'])),
+                    int(float(item['market_cap'])),
+                    datetime.now(tz=timezone.utc),
+                    name_dc,
+                    guildname
+                )
+                called_by = name_dc
+            else:
+                if existing_coin:
+                    seen_coins[coin_key] = {
+                        'address': item['address'],
+                        'called_mcap': existing_coin['called_mcap'],
+                        'market_cap': int(float(item['market_cap'])),
+                        'called_at': existing_coin['called_at'],
+                        'called_by': existing_coin['called_by']
+                    }
+                called_by = seen_coins[coin_key]['called_by']
+
+            logging.info(f"Called by: {called_by}")
+            embed = await generate_embed_ca(item, topbuyers, socials, connected_wallets, called_by)
+            if embed:
+                await ctx.send(f"{item['address']}",embeds=[embed])
+            else:
+                logging.error(f"No valid embed created for address {address}.")
+                await ctx.send(f"No valid data found for address {address}.")
+        else:
+            logging.error(f"Failed to fetch data for address {address}.")
+            await ctx.send(f"No valid data found for address {address}.")
+    except Exception as e:
+        logging.error(f"Error in ca command: {e}")
+        await ctx.send(f"An error occurred while processing the request.")
+
+@interactions.slash_command(
+    name="dexsignals",
+    description="Start sending signals from the DEX Paid Coins",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False,
+    options=[
+        {
+            "name": "role",
+            "description": "The role to mention in the alerts.",
+            "type": interactions.OptionType.ROLE,
+            "required": False  # Make this option optional
+        }
+    ]
+)
+async def dexsignals(ctx, role: interactions.Role = None):
+    if await admin_command(ctx):
+        await start_task(ctx, "dexsignals", role)
+    else:
+        await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+
+        
+async def scrape_telegram_preview(ctx, role):
+    """Scrape the Telegram preview page for the last three messages and send signals."""
+    url = 'https://t.me/s/dexpaidpump'
+    last_message_time = None
+    processed_addresses = set()  # Set to keep track of processed contract addresses
+
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        page_content = await response.text()
+                        soup = BeautifulSoup(page_content, 'html.parser')
+
+                        # Find all message blocks
+                        message_blocks = soup.find_all('div', class_='tgme_widget_message_wrap')
+
+                        # Only check the last three messages (from the bottom)
+                        message_blocks = message_blocks[-3:]
+
+                        new_addresses = set()
+
+                        for block in reversed(message_blocks):  # Process from bottom to top
+                            try:
+                                # Extract the message time
+                                message_time_element = block.find('time')
+                                if message_time_element:
+                                    message_time = message_time_element['datetime']
+
+                                    if last_message_time is None or message_time > last_message_time:
+                                        # Extract the contract address
+                                        code_element = block.find('code')
+                                        if code_element:
+                                            contract_address = code_element.get_text()
+
+                                            # Check if the address has already been processed
+                                            if contract_address not in processed_addresses:
+                                                new_addresses.add(contract_address)
+                                                processed_addresses.add(contract_address)  # Mark as processed
+                                                last_message_time = message_time
+                            except Exception as inner_e:
+                                logging.error(f"Error processing block: {inner_e}")
+
+                        if new_addresses:
+                            valid_addresses = set()
+
+                            for address in new_addresses:
+                                api_url = f"{FETCH_COIN_DATA}{address}"
+                                data = await fetch_data(api_url)
+                                if data and 'data' in data and 'token' in data['data']:
+                                    item = data['data']['token']
+    
+                                    connected_wallets = count_connected_wallets(await fetch_bubblemap_data(item['address']))
+                                    socials = get_socials(item.get('social_links', {}))
+                                    topbuyers = await fetch_top_buyers(item['address'])
+
+                                    embed = await generate_simple_embed(item, socials, connected_wallets, topbuyers, role)
+                                    if embed:
+                                        if role:
+                                            await ctx.channel.send(f"{item['address']}", content=f"{role.mention}", embeds=[embed])
+                                        else:
+                                            await ctx.channel.send(f"{item['address']}", embeds=[embed])
+                                        valid_addresses.add(address)
+
+                            if not valid_addresses:
+                                await ctx.send('No valid data found for the extracted addresses.', ephemeral=True)
+
+                    else:
+                        logging.error(f"Failed to fetch the page, status code: {response.status}")
+
+                # Wait for 5 seconds before checking again
+                await asyncio.sleep(5)
+
+            except Exception as e:
+                logging.error(f"Error in scrape_telegram_preview: {e}", exc_info=True)
+                await asyncio.sleep(10)  # Wait before retrying
         
 def get_seen_coins(guildname):
     """Fetch seen_coins from the database."""
