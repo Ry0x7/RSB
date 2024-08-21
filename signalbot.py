@@ -304,7 +304,6 @@ async def fetch_telegram_links(address, symbol, name):
         valid_links = set()
         for reply in data:
             links = extract_telegram_links(reply['text'])
-            # logging.info(f"Extracted Telegram links: {links}")
             for full_link, telegram_link in links.items():
                 try:
                     if any(sub in telegram_link for sub in ["cto"]) and \
@@ -316,13 +315,15 @@ async def fetch_telegram_links(address, symbol, name):
                         valid_links.add(full_link)
                 except IndexError:
                     logging.error(f"Error processing link: {full_link}")
-        return filter_telegram_links(list(valid_links), symbol.lower(), name.lower())
+        # Modification: Ensure a list is always returned
+        return filter_telegram_links(list(valid_links), symbol.lower(), name.lower()) or []
     elif data and data['code'] == 403:
         logging.error("Access to replies API is forbidden.")
-        return None
+        return []
     else:
         logging.info("No valid data found for Telegram links.")
         return []
+
 
 def filter_telegram_links(links, symbol, name):
     """Filter Telegram links that contain the coin symbol or name as a substring or are similar."""
@@ -496,7 +497,7 @@ def get_socials(social_links):
     
     return " **∙** ".join(links)
 
-async def format_embed(item, ca_data=None):
+async def format_embed(item,):
     """Format the embed message for the coin."""
     embed_title = f"🪙 {item['name']} (${item['symbol']})"
     embed = interactions.Embed(title="", color=0x00ff00)
@@ -507,35 +508,20 @@ async def format_embed(item, ca_data=None):
         logo_url = f"https://pump.mypinata.cloud/ipfs/{ipfs_hash}"
     embed.set_thumbnail(url=logo_url)
     
-    if ca_data:
-        # Add fields specific to /ca command
-        coin_info = ca_data.get('coin_info', '')
-        field_value = ca_data.get('field_value', '')
-        called_value = ca_data.get('called_value', '')
-        other_info = ca_data.get('other_info', '')
-        quick_buy = ca_data.get('quicksnipe', '')
-        telegram_field_value = ca_data.get('telegram_field_value', '')
-
-        embed.add_field(name="Coin Data", value=coin_info + field_value, inline=False)
-        embed.add_field(name="Called Info", value=called_value, inline=False)
-        embed.add_field(name="Rug Check", value=other_info, inline=False)
-        embed.add_field(name="Quick Buy", value=quick_buy, inline=False)
-        embed.add_field(name="CTO TG", value=telegram_field_value, inline=False)
-    else:
-        # Add fields specific to send_coins
-        social_links = get_social_links(item)
-        top_buyers = await fetch_top_buyers(item['address'])
-        bubblemap_data = await fetch_bubblemap_data(item['address'])
-        connected_wallets = count_connected_wallets(bubblemap_data)
+    # Add fields specific to send_coins
+    social_links = get_social_links(item)
+    top_buyers = await fetch_top_buyers(item['address'])
+    bubblemap_data = await fetch_bubblemap_data(item['address'])
+    connected_wallets = count_connected_wallets(bubblemap_data)
+    
+    if top_buyers is None:
+        logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
+        return None
+    
+    embed_fields = await generate_embed_fields(item, social_links, top_buyers, connected_wallets)
+    for field_name, field_value in embed_fields.items():
+        embed.add_field(name=field_name, value=field_value, inline=False)
         
-        if top_buyers is None:
-            logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
-            return None
-        
-        embed_fields = await generate_embed_fields(item, social_links, top_buyers, connected_wallets)
-        for field_name, field_value in embed_fields.items():
-            embed.add_field(name=field_name, value=field_value, inline=False)
-            
     random_footer = random.choice(footer_messages)
     embed.set_footer(text=random_footer)
     return embed
@@ -619,110 +605,112 @@ async def generate_embed_fields(item, social_links, top_buyers, connected_wallet
         "**CTO TG**": telegram_field_value,
     }
 
-
-async def generate_embed_ca(item, topbuyers, socials, connected_wallets, called_by):
+async def generate_embed_ca(item, socials, connected_wallets, called_by):
     try:
         # Prepare the data for the embed
-        coin_info = f"```{item['address']}```\n"
+        coin_info = f"```{item.get('address', 'N/A')}```\n"
         if socials:
             coin_info += f"{socials}\n"
-        coin_info += f"💊 **[Pump](https://pump.fun/{item['address']})**\n\n"
+        coin_info += f"💊 **[Pump](https://pump.fun/{item.get('address', 'N/A')})**\n\n"
         
-        market_cap = format_large_number(int(float(item.get('market_cap'))) if item.get('market_cap') else 'N/A')
-        created_time_since = get_time_since_creation(item['creation_timestamp']) if item.get('creation_timestamp') else 'N/A'
+        # Safely convert and format the data
+        market_cap = format_large_number(int(float(item.get('market_cap', 0.0))))
+        created_time_since = get_time_since_creation(item.get('creation_timestamp', 0)) if item.get('creation_timestamp') else 'N/A'
         holder_count = item.get('holder_count', 'N/A')
-        volume_1m = format_large_number(int(float(item.get('volume_1m', 0.0) or 0.0)))
-        top_10_holder_rate = float(item.get('top_10_holder_rate')) * 100 if item.get('top_10_holder_rate') is not None else 0.0
-        creator_balance = int(float(item.get('creator_balance', 0.00)))
-        creator_balance_rate = float(item.get('creator_percentage', 0.0)) * 100 if item.get('creator_percentage') is not None else 0.0
-        if item.get('creator_token_status') == "creator_close" or item.get('creator_close') == True:
+        volume_1m = format_large_number(int(float(item.get('volume_1m', 0.0))))
+        top_10_holder_rate = float(item.get('top_10_holder_rate', 0.0)) * 100
+        creator_balance = int(float(item.get('creator_balance', 0.0)))
+        creator_balance_rate = float(item.get('creator_percentage', 0.0)) * 100
+        
+        # Handle dev status conditions safely
+        dev_status = "Dev sold: ❌"
+        if item.get('creator_token_status') == "creator_close" or item.get('creator_close') is True:
             dev_status = "Dev sold all: ✅"
         elif item.get('creator_token_status') == "creator_hold":
             dev_status = f"Dev Holds: `{creator_balance_rate:.2f}%`"
         elif item.get('creator_token_status') == "creator_buy":
             dev_status = f"Dev Bought More:  `{creator_balance_rate:.2f}%`"
-        else:
-            dev_status = "Dev sold: ❌"
             
         holder_rugged_num = item.get('holder_rugged_num', 0.0)
         holder_token_num = item.get('holder_token_num', 0.0)
-
-        holders = topbuyers.get('holders', {})
-        fresh_wallet_count = sum('fresh_wallet' in holder['tags'] for holder in holders.get('holderInfo', []))
-        sniper_count = sum('sniper' in holder['maker_token_tags'] for holder in holders.get('holderInfo', []))
-        rat_trader_count = sum('rat_trader' in holder['maker_token_tags'] for holder in holders.get('holderInfo', []))
-        smart_trader_count = sum('pump_smart' in holder['tags'] for holder in holders.get('holderInfo', []))
         
-        telegram_links = await fetch_telegram_links(item['address'], item['symbol'], item['name'])
+        # Fetch and safely handle telegram links
+        telegram_links = await fetch_telegram_links(item.get('address', 'N/A'), item.get('symbol', 'N/A'), item.get('name', 'N/A'))
         telegram_field_value = " | ".join(telegram_links) if telegram_links else "No TG Found"
-        logging.info(f"Telegram links for {item['name']} ({item['symbol']}): {telegram_field_value}")
         cto_flag = "✅" if telegram_links else "❌"
         
-        # Use the new check_dex_paid function
-        dex_paid = await check_dex_paid(item['address'])
+        # Check DEX paid status and handle failures
+        dex_paid = await check_dex_paid(item.get('address', 'N/A'))
         if dex_paid == 500:
-            logging.warning(f"Dex paid check failed for {item['address']}. Setting default value.")
+            logging.warning(f"Dex paid check failed for {item.get('address', 'N/A')}. Setting default value.")
             dex_paid = False
         
-        dex_status_check = f"[Check Status](https://www.checkdex.xyz/{item['address']})"
-        bubblemap_check = f"[Bubblemap](https://app.bubblemaps.io/sol/token/{item['address']}?pumpfun=true)"
+        dex_status_check = f"[Check Status](https://www.checkdex.xyz/{item.get('address', 'N/A')})"
+        bubblemap_check = f"[Bubblemap](https://app.bubblemaps.io/sol/token/{item.get('address', 'N/A')}?pumpfun=true)"
         
-        called_mcap = format_large_number(seen_coins[(item['name'], item['symbol'], item['address'])]['called_mcap'])
-        called_at = seen_coins[(item['name'], item['symbol'], item['address'])]['called_at']
+        # Safely handle the called market cap and date formatting
+        seen_coin = seen_coins.get((item.get('name', 'N/A'), item.get('symbol', 'N/A'), item.get('address', 'N/A')), {})
+        called_mcap = format_large_number(seen_coin.get('called_mcap', 0))
+        called_at = seen_coin.get('called_at', 'N/A')
         
         if isinstance(called_at, str):
             called_at = datetime.strptime(called_at, "%I:%M %p %b %d")
-        called_at_formatted = called_at.strftime("%I:%M %p %b %d")
-        profit_percentage = calculate_profit_percentage(seen_coins[(item['name'], item['symbol'], item['address'])]['called_mcap'], int(float(item['market_cap'])))
-
+        called_at_formatted = called_at.strftime("%I:%M %p %b %d") if called_at != 'N/A' else 'N/A'
+        
+        # Calculate profit percentage safely
+        profit_percentage = calculate_profit_percentage(seen_coin.get('called_mcap', 0), int(float(item.get('market_cap', 0.0))))
+        
+        # Construct the embed fields
         field_value = (
             f"💎 **MCAP:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
             f"📊 **1m-Vol:** `${volume_1m}`\n"
             f"🏆 **Top10**: `{top_10_holder_rate:.2f}%` 👥 **Holders:** `{holder_count}`\n"
-            f"🫅 **Dev SolBal:** `{creator_balance}`\n"
+            f"🫅 **Dev SolBal:** `{creator_balance}`\n\n"
         )
         
         called_value = (
             f"👁️ **Called At:** `${called_mcap}` on `{called_at_formatted}`\n"
             f"👤 **Called By:** `@{called_by}` \n"
-            f"💰 **Profit/Loss:** `{profit_percentage}`\n"
+            f"💰 **Profit/Loss:** `{profit_percentage}`\n\n"
         )
-
         other_info = (
-            f"🍼 Fresh Wallets: `{fresh_wallet_count}` \n"
-            f"🎯 Snipers: `{sniper_count}`\n"
-            f"🐀 Rats: `{rat_trader_count}`\n"
-            f"🧠 Smart Traders: `{smart_trader_count}`\n"
             f"🔗 Connected Wallets: `{connected_wallets}` | {bubblemap_check}\n"
             f"⚡ Dex paid?: {'✅' if dex_paid else '❌'} | {dex_status_check} \n"
             f"🧑‍💻 {dev_status}\n"
             f"⚠️ Deployed: `{holder_token_num}` | Rugged: `{holder_rugged_num}`\n"
-            f"🫂 CTO?: {cto_flag}\n"
+            f"🫂 CTO?: {cto_flag}\n\n"
         )
         
         quick_buy = (
-            f"**[GmGn](https://gmgn.ai/sol/token/Sef3AuWIF_{item['address']})** ∙ "
-            f"**[Photon](https://photon-sol.tinyastro.io/en/r/@rodent0x/{item['address']})** ∙ "
-            f"**[Bull](https://bullx.io/terminal?chainId=1399811149&address={item['address']})** ∙ "
-            f"**[PepeB](https://t.me/pepeboost_sol04_bot?start=ref_01obi0_ca_{item['address']})** ∙ "
-            f"**[Troj](https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item['address']})** ∙ "
-            f"**[Fasol](https://t.me/fasol_robot?start=ref_rodent0x_ca_{item['address']})**"
+            f"**[GmGn](https://gmgn.ai/sol/token/Sef3AuWIF_{item.get('address', 'N/A')})** ∙ "
+            f"**[Photon](https://photon-sol.tinyastro.io/en/r/@rodent0x/{item.get('address', 'N/A')})** ∙ "
+            f"**[Bull](https://bullx.io/terminal?chainId=1399811149&address={item.get('address', 'N/A')})** ∙ "
+            f"**[PepeB](https://t.me/pepeboost_sol04_bot?start=ref_01obi0_ca_{item.get('address', 'N/A')})** ∙ "
+            f"**[Troj](https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{item.get('address', 'N/A')})** ∙ "
+            f"**[Fasol](https://t.me/fasol_robot?start=ref_rodent0x_ca_{item.get('address', 'N/A')})**"
         )
-            
-        ca_data = {
-            'coin_info': coin_info,
-            'field_value': field_value,
-            'called_value': called_value,
-            'other_info': other_info,
-            'quicksnipe': quick_buy,
-            'telegram_field_value': telegram_field_value
-        }
-        embed = await format_embed(item, ca_data=ca_data)
+        ctotg = (
+            f"\n\n**CTO TG:** {telegram_field_value}"
+        )
+        # Create the embed
+        embed = interactions.Embed(
+            title=f"{item.get('name', 'N/A')} ({item.get('symbol', 'N/A')})",
+            description=coin_info + field_value + called_value + other_info + quick_buy + ctotg,
+            color=0x00ff00
+        )
+        
+        # Set thumbnail with a check for 'ipfs/' in the logo URL
+        logo_url = item.get('logo', '')
+        if 'ipfs/' in logo_url:
+            ipfs_hash = logo_url.split('ipfs/')[-1]
+            logo_url = f"https://pump.mypinata.cloud/ipfs/{ipfs_hash}"
+        embed.set_thumbnail(url=logo_url)
+        
+        embed.set_footer(text=random.choice(footer_messages))
         return embed
     except Exception as e:
         logging.error(f"Error in generate_embed_ca: {e}")
         return None
-
 
 async def generate_simple_embed(item, socials, connected_wallets, topbuyers, role):
     """Generate a simple embed with the required fields."""
@@ -1238,7 +1226,6 @@ async def ca(ctx, address: str):
 
             # Fetch data from synchronous functions or properly await asynchronous ones
             connected_wallets = count_connected_wallets(await fetch_bubblemap_data(item['address']))
-            topbuyers = await fetch_top_buyers(item['address'])
             socials = get_socials(item.get('social_links', {}))
 
             guildname = ctx.guild.name
@@ -1276,9 +1263,9 @@ async def ca(ctx, address: str):
                 called_by = seen_coins[coin_key]['called_by']
 
             logging.info(f"Called by: {called_by}")
-            embed = await generate_embed_ca(item, topbuyers, socials, connected_wallets, called_by)
+            embed = await generate_embed_ca(item, socials, connected_wallets, called_by)
             if embed:
-                await ctx.send(embeds=[embed])
+                await ctx.send(f'{item["address"]}',embeds=[embed])
             else:
                 logging.error(f"No valid embed created for address {address}.")
                 await ctx.send(f"No valid data found for address {address}.")
