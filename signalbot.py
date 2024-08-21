@@ -20,7 +20,6 @@ import io
 import gzip
 import base64
 import concurrent.futures
-import threading
 
 dotenv.load_dotenv()
 
@@ -43,6 +42,7 @@ db = mongo_client['crypto_bot']
 last_data = {}
 seen_coins = {}
 seen_tickers = {}
+sent_coins = {}
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -449,8 +449,11 @@ async def delayed_purge(channel, delay=900):
     try:
         await channel.purge()
         logging.info(f"Channel {channel.name} has been purged after {delay} seconds.")
+    except interactions.errors.NotFound:
+        logging.error(f"Channel {channel.name} not found during purging.")
     except Exception as e:
         logging.error(f"Error purging channel {channel.name}: {e}")
+
 
 def get_social_links(item):
     """Generate social media links for the embed."""
@@ -822,29 +825,35 @@ async def generate_simple_embed(item, socials, connected_wallets, topbuyers, rol
         
 
 async def send_or_update_embed(channel, item, task_type):
-    """Send the embed message for the coin along with the address outside the embed."""
+    """Send the embed message for the coin without updating it if already sent."""
+    guildname = channel.guild.name
+    coins_collection = db[f'coins_{guildname}']
+
+    channel_id = channel.id
+    if channel_id not in sent_messages:
+        sent_messages[channel_id] = {"soaring": {}, "new": {}, "completing": {}}
+        volume_check[channel_id] = {"soaring": {}, "new": {}, "completing": {}}
+    
+    sent_messages_task = sent_messages[channel_id][task_type]
+    
+    
+    # Check if the embed has already been sent
+    if item['address'] in sent_messages_task:
+        logging.info(f"Skipping {item['name']} ({item['symbol']}) as it has already been sent.")
+        return
+
+    
+    embed = await format_embed(item)
+    if not embed:
+        return
+    
     try:
-        embed = await format_embed(item)
-        if not embed:
-            return
-
-        # Send the embed message
-        try:
-            message = await channel.send(f"{item['address']}", embeds=[embed])
-            sent_messages[channel.id][task_type][item['address']] = message.id
-        except Exception as e:
-            logging.error(f"Error sending embed for {item['name']} ({item['symbol']}): {e}")
-            return
-
-        # Start a delayed task to purge the channel after 15 minutes
-        try:
-            asyncio.create_task(delayed_purge(channel, delay=900))
-        except Exception as e:
-            logging.error(f"Error starting delayed purge task for {item['name']} ({item['symbol']}): {e}")
+        # Send the message only if it hasn't been sent already
+        message = await channel.send(f"{item['address']}",embeds=[embed])
+        sent_messages_task[item['address']] = message.id
 
     except Exception as e:
-        logging.error(f"Unexpected error in send_or_update_embed: {e}")
-
+        logging.error(f"Error in send_or_update_embed: {e}")
 
 
 async def send_coins(channel, task_type, ctx):
@@ -897,11 +906,6 @@ async def send_coins(channel, task_type, ctx):
             for item in data['data']['rank']:
                 coin_key = (item['name'], item['symbol'])
 
-                # Check if the coin was already sent in the current task
-                if item['address'] in sent_messages.get(channel_id, {}).get(task_type, {}):
-                    logging.info(f"Skipping {item['name']} ({item['symbol']}) as it has already been sent.")
-                    continue
-
                 # Check for duplicate tickers
                 if item['symbol'] in seen_tickers and seen_tickers[item['symbol']] != item['address']:
                     continue
@@ -921,7 +925,7 @@ async def send_coins(channel, task_type, ctx):
                     continue  # Skip if volume is below 2000 for completing coins
                 
                 # Fetch top buyers data only for the /new task using the cache
-                if task_type == "new":
+                if task_type == "new" or "soaring":
                     if item['address'] in top_buyers_cache:
                         top_buyers = top_buyers_cache[item['address']]
                     else:
@@ -1077,19 +1081,20 @@ async def start_task(ctx, task_type, role=None):
             return
     await ctx.send(f'Grabbing {task_type.capitalize()} Coins for the BAGSS! 👜', ephemeral=True)
     scheduler = await aiojobs.create_scheduler()
-    
+
     if task_type == "dexsignals":
         task = await scheduler.spawn(scrape_telegram_preview(ctx, role))
     else:
         task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type, ctx))
-    
+
     if ctx.channel.id not in running_tasks:
         running_tasks[ctx.channel.id] = {}
     running_tasks[ctx.channel.id][task_type] = task
     await ctx.send(f'Started sending {task_type} coin information. 📈', ephemeral=True)
 
-    # Schedule the delayed purge
+    # Correctly call the delayed_purge function
     asyncio.create_task(delayed_purge(ctx.channel, delay=900))
+
 
 
 @interactions.slash_command(
