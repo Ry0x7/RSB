@@ -1278,7 +1278,7 @@ async def ca(ctx, address: str):
             logging.info(f"Called by: {called_by}")
             embed = await generate_embed_ca(item, topbuyers, socials, connected_wallets, called_by)
             if embed:
-                await ctx.send(f"{item['address']}",embeds=[embed])
+                await ctx.send(embeds=[embed])
             else:
                 logging.error(f"No valid embed created for address {address}.")
                 await ctx.send(f"No valid data found for address {address}.")
@@ -1369,7 +1369,7 @@ async def scrape_telegram_preview(ctx, role):
                                     embed = await generate_simple_embed(item, socials, connected_wallets, topbuyers, role)
                                     if embed:
                                         if role:
-                                            await ctx.channel.send(f"{item['address']}", content=f"{role.mention}", embeds=[embed])
+                                            await ctx.channel.send(content=f"{role.mention}", embeds=[embed])
                                         else:
                                             await ctx.channel.send(f"{item['address']}", embeds=[embed])
                                         valid_addresses.add(address)
