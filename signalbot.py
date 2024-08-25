@@ -444,16 +444,27 @@ def format_percentage(value):
         return "N/A"
     return f"{float(value) * 100:.2f}%"
 
-async def delayed_purge(channel, delay=900):
-    """Purge the channel after a specified delay (default is 15 minutes)."""
-    await asyncio.sleep(delay)
+async def purge_if_exceeds_limit(channel, limit=10):
+    """Purge the channel if the number of messages exceeds the specified limit."""
     try:
-        await channel.purge()
-        logging.info(f"Channel {channel.name} has been purged after {delay} seconds.")
+        messages = await channel.fetch_messages(limit=limit + 1)
+        if len(messages) > limit:
+            await channel.purge()  # Remove the limit argument
+            logging.info(f"Purged messages in {channel.name} as it exceeded the limit of {limit} messages.")
     except interactions.errors.NotFound:
         logging.error(f"Channel {channel.name} not found during purging.")
+    except interactions.errors.Forbidden:
+        logging.error(f"Permission denied when attempting to purge channel {channel.name}.")
     except Exception as e:
         logging.error(f"Error purging channel {channel.name}: {e}")
+
+async def monitor_and_purge(channel, limit=10):
+    """Continuously monitor the channel and purge messages if they exceed the specified limit."""
+    while True:
+        await purge_if_exceeds_limit(channel, limit=limit)
+        await asyncio.sleep(5)  # Check every 5 seconds
+
+
 
 
 def get_social_links(item):
@@ -1060,9 +1071,8 @@ async def admin_command(ctx):
 
     return False
 
-
 async def start_task(ctx, task_type, role=None):
-    """Start a task to send coin information."""
+    """Start a task to send coin information and begin purging when the message count exceeds the limit."""
     if ctx.channel.id in running_tasks:
         if task_type in running_tasks[ctx.channel.id]:
             await ctx.send(f'Task {task_type.capitalize()} is already running in this channel.', ephemeral=True)
@@ -1080,8 +1090,8 @@ async def start_task(ctx, task_type, role=None):
     running_tasks[ctx.channel.id][task_type] = task
     await ctx.send(f'Started sending {task_type} coin information. 📈', ephemeral=True)
 
-    # Correctly call the delayed_purge function
-    asyncio.create_task(delayed_purge(ctx.channel, delay=900))
+    # Schedule the purge if messages exceed the limit of 10
+    asyncio.create_task(monitor_and_purge(ctx.channel, limit=10))
 
 
 
