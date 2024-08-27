@@ -269,17 +269,18 @@ def calculate_percentage_change(original, current):
 def calculate_profit_percentage(called_mcap, current_mcap):
     """Calculate the profit percentage based on the called and current market cap."""
     if called_mcap == 0:
-        return "N/A"
+        return "N/A", False
     change = ((current_mcap - called_mcap) / called_mcap) * 100
     if change == -100:
-        return "Loss trade🔴"
-    elif change > 0:
-        return f"{change:.2f}%🟢"
+        return "Loss trade🔴", False
     elif change > 100:
         multiplier = change / 100
-        return f"{multiplier:.2f}x🟢"
+        return f"{multiplier:.2f}x🟢", True
+    elif change > 0:
+        return f"{change:.2f}%🟢", False
     else:
-        return f"{change:.2f}%🔴"
+        return f"{change:.2f}%🔴", False
+
 
 def is_similar(a, b, threshold=0.4):
     """Check if two strings are similar based on a threshold."""
@@ -662,14 +663,21 @@ async def generate_embed_ca(item, socials, connected_wallets, called_by):
         # Safely handle the called market cap and date formatting
         seen_coin = seen_coins.get((item.get('name', 'N/A'), item.get('symbol', 'N/A'), item.get('address', 'N/A')), {})
         called_mcap = format_large_number(seen_coin.get('called_mcap', 0))
+        highest_mcap = seen_coin.get('highest_mcap', seen_coin.get('market_cap', int(float(item.get('market_cap', 0.0)))))
+        current_market_cap = int(float(item.get('market_cap', 0.0)))
+        logging.info(f"Called MCAP: {called_mcap}, Highest MCAP: {highest_mcap}")
         called_at = seen_coin.get('called_at', 'N/A')
         
         if isinstance(called_at, str):
             called_at = datetime.strptime(called_at, "%I:%M %p %b %d")
         called_at_formatted = called_at.strftime("%I:%M %p %b %d") if called_at != 'N/A' else 'N/A'
         
-        # Calculate profit percentage safely
-        profit_percentage = calculate_profit_percentage(seen_coin.get('called_mcap', 0), int(float(item.get('market_cap', 0.0))))
+        # Calculate profit percentage using highest_mcap
+        profit_percentage, is_above_100 = calculate_profit_percentage(seen_coin.get('called_mcap', 0), highest_mcap)
+
+        # Use the current market cap if highest_mcap profit is not above 100%
+        if not is_above_100:
+            profit_percentage, _ = calculate_profit_percentage(seen_coin.get('called_mcap', 0), current_market_cap)
         
         # Construct the embed fields
         field_value = (
@@ -722,6 +730,7 @@ async def generate_embed_ca(item, socials, connected_wallets, called_by):
     except Exception as e:
         logging.error(f"Error in generate_embed_ca: {e}")
         return None
+
 
 async def generate_simple_embed(item, socials, connected_wallets, topbuyers, role):
     """Generate a simple embed with the required fields."""
@@ -1247,6 +1256,7 @@ async def ca(ctx, address: str):
                 seen_coins[coin_key] = {
                     'address': item['address'],
                     'called_mcap': int(float(item['market_cap'])),
+                    'highest_mcap': int(float(item['market_cap'])),  # Initialize highest_mcap with the first market cap
                     'market_cap': int(float(item['market_cap'])),
                     'called_at': datetime.now(tz=timezone.utc),
                     'called_by': name_dc
@@ -1266,6 +1276,7 @@ async def ca(ctx, address: str):
                     seen_coins[coin_key] = {
                         'address': item['address'],
                         'called_mcap': existing_coin['called_mcap'],
+                        'highest_mcap': existing_coin.get('highest_mcap', int(float(item['market_cap']))),
                         'market_cap': int(float(item['market_cap'])),
                         'called_at': existing_coin['called_at'],
                         'called_by': existing_coin['called_by']
@@ -1273,9 +1284,20 @@ async def ca(ctx, address: str):
                 called_by = seen_coins[coin_key]['called_by']
 
             logging.info(f"Called by: {called_by}")
+
+            # Calculate the profit percentage using the highest_mcap instead of current market cap
+            highest_mcap = seen_coins[coin_key].get('highest_mcap', int(float(item['market_cap'])))
+
+            # Check if the current market cap is the new highest
+            current_market_cap = int(float(item['market_cap']))
+            if current_market_cap > highest_mcap:
+                logging.info(f"New highest market cap detected for {item['symbol']}. Updating highest_mcap.")
+                update_highest_mcap(item['address'], current_market_cap, guildname)
+                seen_coins[coin_key]['highest_mcap'] = current_market_cap
+
             embed = await generate_embed_ca(item, socials, connected_wallets, called_by)
             if embed:
-                await ctx.send(f'{item["address"]}',embeds=[embed])
+                await ctx.send(f'{item["address"]}', embeds=[embed])
             else:
                 logging.error(f"No valid embed created for address {address}.")
                 await ctx.send(f"No valid data found for address {address}.")
@@ -1285,6 +1307,7 @@ async def ca(ctx, address: str):
     except Exception as e:
         logging.error(f"Error in ca command: {e}")
         await ctx.send(f"An error occurred while processing the request.")
+
 
 @interactions.slash_command(
     name="dexsignals",
@@ -1416,6 +1439,7 @@ def update_seen_coin(name, symbol, address, called_mcap, market_cap, called_at, 
             'name': name,
             'symbol': symbol,
             'called_mcap': called_mcap,
+            'highest_mcap': market_cap,  # Use highest_mcap here
             'market_cap': market_cap,
             'called_at': called_at_formatted,
             'called_by': called_by
@@ -1434,12 +1458,26 @@ def update_seen_coin(name, symbol, address, called_mcap, market_cap, called_at, 
                 'name': name,
                 'symbol': symbol,
                 'called_mcap': called_mcap,
+                'highest_mcap': market_cap,  # Use highest_mcap here
                 'market_cap': market_cap,
                 'called_at': called_at,
                 'called_by': called_by
             }},
             upsert=True
         )
+
+def update_highest_mcap(address, current_mcap, guildname):
+    """Update the highest market cap in the database."""
+    coins_collection = db[f'coins_{guildname}']
+
+    # Update or insert the highest_mcap for the coin
+    coins_collection.update_one(
+        {'address': address},
+        {'$set': {'highest_mcap': current_mcap}},
+        upsert=True
+    )
+    logging.info(f"Updated highest_mcap for address {address} with value: {current_mcap}")
+
 
 # Start the bot
 bot.start()
