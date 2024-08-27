@@ -71,7 +71,7 @@ footer_messages = [
     "Data accuracy is our priority 📈",
     "Powered by your friendly neighborhood bot 🤖",
     "Nothing is more important than data accuracy 📊",
-    "For the best signals, DM @chakazzz 👑"
+    "For the best bots, DM @chakazzz 👑"
 ]
 
 status_messages = [
@@ -81,7 +81,7 @@ status_messages = [
     "Fetching the latest data 🧠",
     "Analyzing market caps 💹",
     "Checking for new coins 🪙",
-    "Want the best signals? DM @chakazzz 👑"
+    "Want this bot in your server? DM @chakazzz 👑"
 ]
 
 useragents = [
@@ -116,20 +116,20 @@ useragents = [
 
 main_proxy = "https://spczig9st1:9~QJmaHbtsnv73xbS8@gate.smartproxy.com:7000"
 
-def fetch_ip(proxy_parsed, proxy_auth_encoded):
-    """Fetch the current IP address using the proxy."""
-    conn = http.client.HTTPSConnection(proxy_parsed.hostname, proxy_parsed.port)
-    conn.set_tunnel("api.ipify.org", headers={"Proxy-Authorization": f"Basic {proxy_auth_encoded}"})
-    conn.request("GET", "/")
-    response = conn.getresponse()
-    if response.status == 200:
-        ip = response.read().decode('utf-8')
-        logging.info(f"Current IP address: {ip}")
-        return ip
-    else:
-        logging.error(f"Failed to fetch IP address: {response.status} {response.reason}")
-    conn.close()
-    return None
+# def fetch_ip(proxy_parsed, proxy_auth_encoded):
+#     """Fetch the current IP address using the proxy."""
+#     conn = http.client.HTTPSConnection(proxy_parsed.hostname, proxy_parsed.port)
+#     conn.set_tunnel("api.ipify.org", headers={"Proxy-Authorization": f"Basic {proxy_auth_encoded}"})
+#     conn.request("GET", "/")
+#     response = conn.getresponse()
+#     if response.status == 200:
+#         ip = response.read().decode('utf-8')
+#         logging.info(f"Current IP address: {ip}")
+#         return ip
+#     else:
+#         logging.error(f"Failed to fetch IP address: {response.status} {response.reason}")
+#     conn.close()
+#     return None
 
 def fetch_data_sync(url, retries=3, delay=3):
     """Synchronous fetch data function with retries and delay."""
@@ -144,8 +144,8 @@ def fetch_data_sync(url, retries=3, delay=3):
     proxy_auth_encoded = base64.b64encode(proxy_auth.encode()).decode()
 
     # Check IP address before fetching data
-    logging.info("Checking IP address before fetching data...")
-    fetch_ip(proxy_parsed, proxy_auth_encoded)
+    # logging.info("Checking IP address before fetching data...")
+    # fetch_ip(proxy_parsed, proxy_auth_encoded)
 
     for attempt in range(retries):
         try:
