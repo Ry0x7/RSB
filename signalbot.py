@@ -774,7 +774,6 @@ async def generate_simple_embed(item, socials, connected_wallets, topbuyers, rol
         cto_flag = "✅" if telegram_links else "❌"
 
         bubblemap_check = f"[Bubblemap](https://app.bubblemaps.io/sol/token/{item['address']}?pumpfun=true)"
-        cto_flag = "✅" if item.get('cto_flag') else "❌"
 
         field_value = (
             f"💎 **MCAP:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
