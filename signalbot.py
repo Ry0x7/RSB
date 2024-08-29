@@ -832,7 +832,7 @@ async def generate_simple_embed(item, socials, connected_wallets, topbuyers, rol
         return None  # Handle the error gracefully and return None
         
 
-async def send_or_update_embed(channel, item, task_type):
+async def send_or_update_embed(channel, item, task_type, role=None):
     """Send the embed message for the coin without updating it if already sent."""
     guildname = channel.guild.name
     coins_collection = db[f'coins_{guildname}']
@@ -844,12 +844,10 @@ async def send_or_update_embed(channel, item, task_type):
     
     sent_messages_task = sent_messages[channel_id][task_type]
     
-    
     # Check if the embed has already been sent
     if item['address'] in sent_messages_task:
         logging.info(f"Skipping {item['name']} ({item['symbol']}) as it has already been sent.")
         return
-
     
     embed = await format_embed(item)
     if not embed:
@@ -857,14 +855,17 @@ async def send_or_update_embed(channel, item, task_type):
     
     try:
         # Send the message only if it hasn't been sent already
-        message = await channel.send(f"{item['address']}",embeds=[embed])
+        if role:
+            message = await channel.send(f"{role.mention} {item['address']}", embeds=[embed])
+        else:
+            message = await channel.send(f"{item['address']}", embeds=[embed])
         sent_messages_task[item['address']] = message.id
-
     except Exception as e:
         logging.error(f"Error in send_or_update_embed: {e}")
 
 
-async def send_coins(channel, task_type, ctx):
+
+async def send_coins(channel, task_type, ctx, role=None):
     global last_data
     guildname = channel.guild.name
     coins_collection = db[f'coins_{guildname}']
@@ -908,7 +909,6 @@ async def send_coins(channel, task_type, ctx):
         url = build_query_url(BASE_URL, params[task_type])
         data = await fetch_data(url)
         logging.info(f"Fetching data for {task_type} task")
-        # logging.info(f"Data: {data}")
         if data and data['data']['rank'] != last_data[channel_id][task_type]:
             last_data[channel_id][task_type] = data['data']['rank']
             for item in data['data']['rank']:
@@ -992,7 +992,7 @@ async def send_coins(channel, task_type, ctx):
                     )
 
                 # Send the embed for the coin
-                await send_or_update_embed(channel, item, task_type)
+                await send_or_update_embed(channel, item, task_type, role)
 
     except Exception as e:
         logging.error(f"Error in send_coins: {e}", exc_info=True)
@@ -1081,7 +1081,6 @@ async def admin_command(ctx):
     return False
 
 async def start_task(ctx, task_type, role=None):
-    """Start a task to send coin information and begin purging when the message count exceeds the limit."""
     if ctx.channel.id in running_tasks:
         if task_type in running_tasks[ctx.channel.id]:
             await ctx.send(f'Task {task_type.capitalize()} is already running in this channel.', ephemeral=True)
@@ -1092,7 +1091,7 @@ async def start_task(ctx, task_type, role=None):
     if task_type == "dexsignals":
         task = await scheduler.spawn(scrape_telegram_preview(ctx, role))
     else:
-        task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type, ctx))
+        task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type, ctx, role))
 
     if ctx.channel.id not in running_tasks:
         running_tasks[ctx.channel.id] = {}
@@ -1104,32 +1103,60 @@ async def start_task(ctx, task_type, role=None):
 
 
 
-@interactions.slash_command(
-    name="soaring",
-    description="Start sending soaring coin information.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
-    dm_permission=False
-)
-async def soaring(ctx):
-    await start_task(ctx, "soaring")
-
-@interactions.slash_command(
-    name="completing",
-    description="Start sending completing coin information.",
-    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
-    dm_permission=False
-)
-async def completing(ctx):
-    await start_task(ctx, "completing")
 
 @interactions.slash_command(
     name="new",
     description="Start sending newly created coin information.",
     default_member_permissions=interactions.Permissions.MANAGE_GUILD,
-    dm_permission=False
+    dm_permission=False,
+    options=[
+        {
+            "name": "role",
+            "description": "The role to mention in the alerts.",
+            "type": interactions.OptionType.ROLE,
+            "required": False  # Make this option optional
+        }
+    ]
 )
-async def new(ctx):
-    await start_task(ctx, "new")
+async def new(ctx, role: interactions.Role = None):
+    await start_task(ctx, "new", role)
+
+
+@interactions.slash_command(
+    name="soaring",
+    description="Start sending soaring coin information.",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False,
+    options=[
+        {
+            "name": "role",
+            "description": "The role to mention in the alerts.",
+            "type": interactions.OptionType.ROLE,
+            "required": False  # Make this option optional
+        }
+    ]
+)
+async def soaring(ctx, role: interactions.Role = None):
+    await start_task(ctx, "soaring", role)
+
+
+@interactions.slash_command(
+    name="completing",
+    description="Start sending completing coin information.",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False,
+    options=[
+        {
+            "name": "role",
+            "description": "The role to mention in the alerts.",
+            "type": interactions.OptionType.ROLE,
+            "required": False  # Make this option optional
+        }
+    ]
+)
+async def completing(ctx, role: interactions.Role = None):
+    await start_task(ctx, "completing", role)
+
 
 @interactions.slash_command(
     name="stop",
@@ -1207,14 +1234,15 @@ async def reboot(ctx):
     except Exception as e:
         logging.error(f"Error in reboot command: {e}")
 
-async def loop_send_coins(channel, task_type, ctx):
+async def loop_send_coins(channel, task_type, ctx, role=None):
     """Loop to continuously send coin information."""
     while True:
         try:
-            await send_coins(channel, task_type, ctx)
+            await send_coins(channel, task_type, ctx, role)
         except Exception as e:
             logging.error(f"Error in loop_send_coins for {task_type}: {e}")
         await asyncio.sleep(30)
+
 
 @interactions.slash_command(
     name="ca",
