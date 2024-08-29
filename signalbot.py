@@ -1360,7 +1360,7 @@ async def dexsignals(ctx, role: interactions.Role = None):
         
 async def scrape_telegram_preview(ctx, role):
     """Scrape the Telegram preview page for the last three messages and send signals."""
-    url = 'https://t.me/s/dexpaidpump'
+    url = 'https://t.me/s/dex_is_paid'
     last_message_time = None
     processed_addresses = set()  # Set to keep track of processed contract addresses
 
@@ -1433,7 +1433,7 @@ async def scrape_telegram_preview(ctx, role):
 
             except Exception as e:
                 logging.error(f"Error in scrape_telegram_preview: {e}", exc_info=True)
-                await asyncio.sleep(10)  # Wait before retrying
+                await asyncio.sleep(30)  # Wait before retrying
         
 def get_seen_coins(guildname):
     """Fetch seen_coins from the database."""
