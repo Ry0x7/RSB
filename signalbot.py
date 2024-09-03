@@ -446,18 +446,20 @@ def format_percentage(value):
     return f"{float(value) * 100:.2f}%"
 
 async def purge_if_exceeds_limit(channel, limit=10):
-    """Purge the channel if the number of messages exceeds the specified limit."""
+    """Delete the oldest message in the channel if the number of messages exceeds the specified limit."""
     try:
         messages = await channel.fetch_messages(limit=limit + 1)
         if len(messages) > limit:
-            await channel.purge()  # Remove the limit argument
-            logging.info(f"Purged messages in {channel.name} as it exceeded the limit of {limit} messages.")
+            oldest_message = messages[-1]  # Get the oldest message (last in the list)
+            await oldest_message.delete()
+            logging.info(f"Deleted the oldest message in {channel.name} as it exceeded the limit of {limit} messages.")
     except interactions.errors.NotFound:
-        logging.error(f"Channel {channel.name} not found during purging.")
+        logging.error(f"Channel {channel.name} not found during message deletion.")
     except interactions.errors.Forbidden:
-        logging.error(f"Permission denied when attempting to purge channel {channel.name}.")
+        logging.error(f"Permission denied when attempting to delete a message in channel {channel.name}.")
     except Exception as e:
-        logging.error(f"Error purging channel {channel.name}: {e}")
+        logging.error(f"Error deleting the oldest message in channel {channel.name}: {e}")
+
 
 async def monitor_and_purge(channel, limit=10):
     """Continuously monitor the channel and purge messages if they exceed the specified limit."""
@@ -1089,6 +1091,8 @@ async def start_task(ctx, task_type, role=None):
 
     if task_type == "dexsignals":
         task = await scheduler.spawn(scrape_telegram_preview(ctx, role))
+    elif task_type == "radarsignals":
+        task = await scheduler.spawn(loop_radar_signals(ctx, role))
     else:
         task = await scheduler.spawn(loop_send_coins(ctx.channel, task_type, ctx, role))
 
@@ -1167,9 +1171,12 @@ async def stop(ctx):
     if await admin_command(ctx):
         stopped_any = False
         if ctx.channel.id in running_tasks:
-            for task_type in ["soaring", "new", "completing", "dexsignals"]:
+            for task_type in ["soaring", "new", "completing", "dexsignals", "radarsignals"]:
                 if task_type in running_tasks[ctx.channel.id]:
-                    await running_tasks[ctx.channel.id][task_type].close()
+                    try:
+                        await running_tasks[ctx.channel.id][task_type].close(timeout=30)  # Increase timeout to 30 seconds
+                    except asyncio.TimeoutError:
+                        logging.error(f"Timeout while closing task {task_type} in channel {ctx.channel.id}")
                     del running_tasks[ctx.channel.id][task_type]
                     stopped_any = True
 
@@ -1433,7 +1440,170 @@ async def scrape_telegram_preview(ctx, role):
             except Exception as e:
                 logging.error(f"Error in scrape_telegram_preview: {e}", exc_info=True)
                 await asyncio.sleep(30)  # Wait before retrying
+                
+async def fetch_sol_price():
+    """Fetch the current SOL price in USD from the CoinGecko API."""
+    sol_price_data = await fetch_data_waf_bypass2('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd')
+    
+    if sol_price_data and 'solana' in sol_price_data and 'usd' in sol_price_data['solana']:
+        try:
+            return float(sol_price_data['solana']['usd'])
+        except ValueError:
+            logging.error("Failed to parse SOL price from CoinGecko API response.")
+            return None
+    else:
+        logging.error("Failed to fetch SOL price from CoinGecko API.")
+        return None
+
+@interactions.slash_command(
+    name="radarsignals",
+    description="Start sending radar signals from recent alerts.",
+    default_member_permissions=interactions.Permissions.MANAGE_GUILD,
+    dm_permission=False,
+    options=[
+        {
+            "name": "role",
+            "description": "The role to mention in the alerts.",
+            "type": interactions.OptionType.ROLE,
+            "required": False  # Make this option optional
+        }
+    ]
+)
+async def radarsignals(ctx, role: interactions.Role = None):
+    if await admin_command(ctx):
+        await start_task(ctx, "radarsignals", role)
+    else:
+        await ctx.send('You do not have the required permissions to use this command.', ephemeral=True)
+
+async def loop_radar_signals(ctx, role=None):
+    """Loop to continuously send radar signal information."""
+    while True:
+        try:
+            await send_radar_signals(ctx, role)
+        except Exception as e:
+            logging.error(f"Error in loop_radar_signals: {e}")
+        await asyncio.sleep(30)
         
+async def send_radar_signals(ctx, role=None):
+    try:
+        # Fetch the SOL price in USD
+        sol_to_usd_rate = await fetch_sol_price()
+
+        if sol_to_usd_rate is None:
+            await ctx.send("Error: Could not fetch SOL price.")
+            return
+
+        # Fetch the data from the radar signals API
+        radar_data = await fetch_data_waf_bypass2('https://axiom.trading/radar/api/data-recent')
+
+        # Check if the 'data' key exists in the radar_data
+        if not radar_data or 'data' not in radar_data:
+            logging.error("The 'data' key is missing in the response data.")
+            await ctx.send("Error: Could not find 'data' in the response.")
+            return
+
+        # Process multiple radar signals (0 to 3)
+        for index in range(min(3, len(radar_data['data']['recentRadarAlerts']))):
+            alert = radar_data['data']['recentRadarAlerts'][index]
+
+            # Get old and new stats
+            old_stats = alert.get('old_stats', {})
+            new_stats = alert.get('new_stats', {})
+
+            if not old_stats or not new_stats:
+                logging.error(f"Missing 'old_stats' or 'new_stats' in the alert data for index {index}.")
+                continue
+
+            # Convert SOL values to USD and round to 2 decimals
+            old_market_cap_usd = round(old_stats.get('market_cap_sol', 0) * sol_to_usd_rate, 2)
+            new_market_cap_usd = round(new_stats.get('market_cap_sol', 0) * sol_to_usd_rate, 2)
+
+            old_liquidity_usd = round(old_stats.get('liquidity_sol', 0) * sol_to_usd_rate, 2)
+            new_liquidity_usd = round(new_stats.get('liquidity_sol', 0) * sol_to_usd_rate, 2)
+
+            old_volume_usd = round(old_stats.get('volume_sol', 0) * sol_to_usd_rate, 2)
+            new_volume_usd = round(new_stats.get('volume_sol', 0) * sol_to_usd_rate, 2)
+
+            # Calculate percentage changes and determine color
+            market_cap_change, market_cap_trend = calculate_percentage_change(old_market_cap_usd, new_market_cap_usd)
+            liquidity_change, liquidity_trend = calculate_percentage_change(old_liquidity_usd, new_liquidity_usd)
+            volume_change, volume_trend = calculate_percentage_change(old_volume_usd, new_volume_usd)
+
+            # Add trend indicators for Market Cap ATH percentage change
+            ath_percent_change = float(alert['market_cap_sol_ath_percent_change'])
+            ath_trend_indicator = "📈" if ath_percent_change > 0 else "📉" if ath_percent_change < 0 else ""
+
+            # Set embed color based on market cap change
+            embed_color = 0x00ff00 if float(market_cap_change.strip('%')) > 0 else 0xff0000
+
+            # Create the embed
+            embed = interactions.Embed(
+                title=f"**{alert['pair']['token_name']} ({alert['pair']['token_ticker']})**",
+                description=f"**Market Cap ATH:** `{format_large_number(int(float(alert['market_cap_sol_ath'] * sol_to_usd_rate)))} ({ath_trend_indicator} {alert['market_cap_sol_ath_percent_change']}%)`",
+                color=embed_color
+            )
+
+            # Add the token address as a code block
+            token_address = f"```{alert['pair']['token_address']}```"
+            embed.add_field(name="**Token Address**", value=token_address, inline=False)
+
+            embed.set_thumbnail(url=alert['pair']['token_image'])
+
+            # Update the original stats with percentage change
+            embed.add_field(
+                name="📣**Original**",
+                value=(
+                    f"**Market Cap:** `{format_large_number(old_market_cap_usd)}`\n"
+                    f"**Liquidity:** `{format_large_number(old_liquidity_usd)}`\n"
+                    f"**Volume:** `{format_large_number(old_volume_usd)}`"
+                ),
+                inline=True
+            )
+
+            # Update the real-time stats with percentage change
+            embed.add_field(
+                name="⌚**Real Time**",
+                value=(
+                    f"**Market Cap:** `{format_large_number(new_market_cap_usd)}` {market_cap_trend} `({market_cap_change})`\n"
+                    f"**Liquidity:** `{format_large_number(new_liquidity_usd)}` {liquidity_trend} `({liquidity_change})`\n"
+                    f"**Volume:** `{format_large_number(new_volume_usd)}` {volume_trend} `({volume_change})`"
+                ),
+                inline=True
+            )
+            
+            quick_buy = (
+                f"**[GmGn](https://gmgn.ai/sol/token/Sef3AuWIF_{alert['pair']['token_address']})** ∙ "
+                f"**[Photon](https://photon-sol.tinyastro.io/en/r/@rodent0x/{alert['pair']['token_address']})** ∙ "
+                f"**[Bull](https://bullx.io/terminal?chainId=1399811149&address={alert['pair']['token_address']})** ∙ "
+                f"**[PepeB](https://t.me/pepeboost_sol04_bot?start=ref_01obi0_ca_{alert['pair']['token_address']})** ∙ "
+                f"**[Troj](https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{alert['pair']['token_address']})** ∙ "
+                f"**[Fasol](https://t.me/fasol_robot?start=ref_rodent0x_ca_{alert['pair']['token_address']})**\n\n"
+            )
+            embed.add_field(name="**Quick Buy**", value=quick_buy, inline=False)
+
+            # Check if the message for this token has already been sent
+            if ctx.channel.id in sent_messages and alert['pair']['token_address'] in sent_messages[ctx.channel.id]:
+                message_id = sent_messages[ctx.channel.id][alert['pair']['token_address']]
+                try:
+                    message = await ctx.channel.fetch_message(message_id)
+                    await message.edit(embeds=[embed])
+                except interactions.errors.NotFound:
+                    # If the message was deleted or not found, send a new one
+                    message = await ctx.send(content=f"{role.mention}" if role else None, embeds=[embed])
+                    sent_messages[ctx.channel.id][alert['pair']['token_address']] = message.id
+            else:
+                # Send the message if it hasn't been sent before
+                message = await ctx.send(content=f"{role.mention}" if role else None, embeds=[embed])
+                if ctx.channel.id not in sent_messages:
+                    sent_messages[ctx.channel.id] = {}
+                sent_messages[ctx.channel.id][alert['pair']['token_address']] = message.id
+
+    except Exception as e:
+        logging.error(f"Error in send_radar_signals: {str(e)}")
+        await ctx.send(f"An error occurred: {str(e)}")
+
+
+
 def get_seen_coins(guildname):
     """Fetch seen_coins from the database."""
     coins_collection = db[f'coins_{guildname}']
