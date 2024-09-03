@@ -1585,26 +1585,25 @@ async def send_radar_signals(ctx, role=None):
             embed.set_footer(text=random_footer)
             
             # Check if the message for this token has already been sent
-            if ctx.channel.id in sent_messages and alert['pair']['token_address'] in sent_messages[ctx.channel.id]:
-                message_id = sent_messages[ctx.channel.id][alert['pair']['token_address']]
-                try:
-                    message = await ctx.channel.fetch_message(message_id)
-                    await message.edit(embeds=[embed])
-                except interactions.errors.NotFound:
-                    # If the message was deleted or not found, send a new one
-                    message = await ctx.send(content=f"📣**RADAR ALERT**📣 {role.mention}" if role else None, embeds=[embed])
-                    sent_messages[ctx.channel.id][alert['pair']['token_address']] = message.id
+            if ctx.channel.id in sent_messages:
+                for message_id in sent_messages[ctx.channel.id]:
+                    try:
+                        message = await ctx.channel.fetch_message(message_id)
+                        if message:
+                            await message.edit(embeds=[embed])
+                            break
+                    except interactions.errors.NotFound:
+                        continue  # If the message was not found, continue to the next one
             else:
                 # Send the message if it hasn't been sent before
                 message = await ctx.send(content=f"📣**RADAR ALERT**📣 {role.mention}" if role else None, embeds=[embed])
                 if ctx.channel.id not in sent_messages:
-                    sent_messages[ctx.channel.id] = {}
-                sent_messages[ctx.channel.id][alert['pair']['token_address']] = message.id
+                    sent_messages[ctx.channel.id] = []
+                sent_messages[ctx.channel.id].append(message.id)
 
     except Exception as e:
         logging.error(f"Error in send_radar_signals: {str(e)}")
         await ctx.send(f"An error occurred: {str(e)}")
-
 
 
 def get_seen_coins(guildname):
