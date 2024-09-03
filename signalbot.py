@@ -43,6 +43,7 @@ last_data = {}
 seen_coins = {}
 seen_tickers = {}
 sent_coins = {}
+sent_tokens = {}
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1505,105 +1506,115 @@ async def send_radar_signals(ctx, role=None):
         # Process multiple radar signals (0 to 3)
         for index in range(min(3, len(radar_data['data']['recentRadarAlerts']))):
             alert = radar_data['data']['recentRadarAlerts'][index]
+            token_address = alert['pair']['token_address']
 
-            # Get old and new stats
-            old_stats = alert.get('old_stats', {})
-            new_stats = alert.get('new_stats', {})
+            # Create the embed using the helper function
+            embed = create_radar_embed(alert, sol_to_usd_rate)
 
-            if not old_stats or not new_stats:
-                logging.error(f"Missing 'old_stats' or 'new_stats' in the alert data for index {index}.")
-                continue
-
-            # Convert SOL values to USD and round to 2 decimals
-            old_market_cap_usd = round(old_stats.get('market_cap_sol', 0) * sol_to_usd_rate, 2)
-            new_market_cap_usd = round(new_stats.get('market_cap_sol', 0) * sol_to_usd_rate, 2)
-
-            old_liquidity_usd = round(old_stats.get('liquidity_sol', 0) * sol_to_usd_rate, 2)
-            new_liquidity_usd = round(new_stats.get('liquidity_sol', 0) * sol_to_usd_rate, 2)
-
-            old_volume_usd = round(old_stats.get('volume_sol', 0) * sol_to_usd_rate, 2)
-            new_volume_usd = round(new_stats.get('volume_sol', 0) * sol_to_usd_rate, 2)
-
-            # Calculate percentage changes and determine color
-            market_cap_change, market_cap_trend = calculate_percentage_change(old_market_cap_usd, new_market_cap_usd)
-            liquidity_change, liquidity_trend = calculate_percentage_change(old_liquidity_usd, new_liquidity_usd)
-            volume_change, volume_trend = calculate_percentage_change(old_volume_usd, new_volume_usd)
-
-            # Add trend indicators for Market Cap ATH percentage change
-            ath_percent_change = float(alert['market_cap_sol_ath_percent_change'])
-            ath_trend_indicator = "📈" if ath_percent_change > 0 else "📉" if ath_percent_change < 0 else ""
-
-            # Set embed color based on market cap change
-            embed_color = 0x00ff00 if float(market_cap_change.strip('%')) > 0 else 0xff0000
-
-            # Create the embed
-            embed = interactions.Embed(
-                title=f"**{alert['pair']['token_name']} ({alert['pair']['token_ticker']})**",
-                description=f"**Market Cap ATH:** `{format_large_number(int(float(alert['market_cap_sol_ath'] * sol_to_usd_rate)))} ({ath_trend_indicator} {alert['market_cap_sol_ath_percent_change']}%)`",
-                color=embed_color
-            )
-
-            # Add the token address as a code block
-            token_address = f"```{alert['pair']['token_address']}```"
-            embed.add_field(name="**Token Address**", value=token_address, inline=False)
-
-            embed.set_thumbnail(url=alert['pair']['token_image'])
-
-            # Update the original stats with percentage change
-            embed.add_field(
-                name="📣**Original**",
-                value=(
-                    f"**Market Cap:** `{format_large_number(old_market_cap_usd)}`\n"
-                    f"**Liquidity:** `{format_large_number(old_liquidity_usd)}`\n"
-                    f"**Volume:** `{format_large_number(old_volume_usd)}`"
-                ),
-                inline=True
-            )
-
-            # Update the real-time stats with percentage change
-            embed.add_field(
-                name="⌚**Real Time**",
-                value=(
-                    f"**Market Cap:** `{format_large_number(new_market_cap_usd)}` {market_cap_trend} `({market_cap_change})`\n"
-                    f"**Liquidity:** `{format_large_number(new_liquidity_usd)}` {liquidity_trend} `({liquidity_change})`\n"
-                    f"**Volume:** `{format_large_number(new_volume_usd)}` {volume_trend} `({volume_change})`"
-                ),
-                inline=True
-            )
-            
-            quick_buy = (
-                f"**[GmGn](https://gmgn.ai/sol/token/Sef3AuWIF_{alert['pair']['token_address']})** ∙ "
-                f"**[Photon](https://photon-sol.tinyastro.io/en/r/@rodent0x/{alert['pair']['token_address']})** ∙ "
-                f"**[Bull](https://bullx.io/terminal?chainId=1399811149&address={alert['pair']['token_address']})** ∙ "
-                f"**[PepeB](https://t.me/pepeboost_sol04_bot?start=ref_01obi0_ca_{alert['pair']['token_address']})** ∙ "
-                f"**[Troj](https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{alert['pair']['token_address']})** ∙ "
-                f"**[Fasol](https://t.me/fasol_robot?start=ref_rodent0x_ca_{alert['pair']['token_address']})**\n\n"
-            )
-            embed.add_field(name="**Quick Buy**", value=quick_buy, inline=False)
-            
-            random_footer = random.choice(footer_messages)
-            embed.set_footer(text=random_footer)
-            
             # Check if the message for this token has already been sent
-            if ctx.channel.id in sent_messages:
-                for message_id in sent_messages[ctx.channel.id]:
-                    try:
-                        message = await ctx.channel.fetch_message(message_id)
-                        if message:
-                            await message.edit(embeds=[embed])
-                            break
-                    except interactions.errors.NotFound:
-                        continue  # If the message was not found, continue to the next one
+            if token_address in sent_tokens:
+                message_id = sent_tokens[token_address]
+                try:
+                    # Fetch the message
+                    message = await ctx.channel.fetch_message(message_id)
+                    if message:
+                        await message.edit(embeds=[embed])
+                    else:
+                        # If fetch_message returns None, remove the token from sent_tokens and send a new message
+                        logging.info(f"Message for token {token_address} returned None, sending new message.")
+                        message = await ctx.channel.send(f"📣**RADAR ALERT**📣 {role.mention}" if role else None, embeds=[embed])
+                        sent_tokens[token_address] = message.id
+                except interactions.errors.NotFound:
+                    # If the message was deleted or not found, remove from sent_tokens and send a new one
+                    logging.info(f"Message for token {token_address} not found, removing from sent_tokens and sending new message.")
+                    message = await ctx.channel.send(f"📣**RADAR ALERT**📣 {role.mention}" if role else None, embeds=[embed])
+                    sent_tokens[token_address] = message.id
             else:
                 # Send the message if it hasn't been sent before
-                message = await ctx.send(content=f"📣**RADAR ALERT**📣 {role.mention}" if role else None, embeds=[embed])
-                if ctx.channel.id not in sent_messages:
-                    sent_messages[ctx.channel.id] = []
-                sent_messages[ctx.channel.id].append(message.id)
+                message = await ctx.channel.send(f"📣**RADAR ALERT**📣 {role.mention}" if role else None, embeds=[embed])
+                sent_tokens[token_address] = message.id
 
     except Exception as e:
         logging.error(f"Error in send_radar_signals: {str(e)}")
         await ctx.send(f"An error occurred: {str(e)}")
+
+
+def create_radar_embed(alert, sol_to_usd_rate):
+    # Get old and new stats
+    old_stats = alert.get('old_stats', {})
+    new_stats = alert.get('new_stats', {})
+
+    # Convert SOL values to USD and round to 2 decimals
+    old_market_cap_usd = round(old_stats.get('market_cap_sol', 0) * sol_to_usd_rate, 2)
+    new_market_cap_usd = round(new_stats.get('market_cap_sol', 0) * sol_to_usd_rate, 2)
+
+    old_liquidity_usd = round(old_stats.get('liquidity_sol', 0) * sol_to_usd_rate, 2)
+    new_liquidity_usd = round(new_stats.get('liquidity_sol', 0) * sol_to_usd_rate, 2)
+
+    old_volume_usd = round(old_stats.get('volume_sol', 0) * sol_to_usd_rate, 2)
+    new_volume_usd = round(new_stats.get('volume_sol', 0) * sol_to_usd_rate, 2)
+
+    # Calculate percentage changes and determine color
+    market_cap_change, market_cap_trend = calculate_percentage_change(old_market_cap_usd, new_market_cap_usd)
+    liquidity_change, liquidity_trend = calculate_percentage_change(old_liquidity_usd, new_liquidity_usd)
+    volume_change, volume_trend = calculate_percentage_change(old_volume_usd, new_volume_usd)
+
+    # Add trend indicators for Market Cap ATH percentage change
+    ath_percent_change = float(alert['market_cap_sol_ath_percent_change'])
+    ath_trend_indicator = "📈" if ath_percent_change > 0 else "📉" if ath_percent_change < 0 else ""
+
+    # Set embed color based on market cap change
+    embed_color = 0x00ff00 if float(market_cap_change.strip('%')) > 0 else 0xff0000
+
+    # Create the embed
+    embed = interactions.Embed(
+        title=f"**{alert['pair']['token_name']} ({alert['pair']['token_ticker']})**",
+        description=f"**Market Cap ATH:** `{format_large_number(int(float(alert['market_cap_sol_ath'] * sol_to_usd_rate)))} ({ath_trend_indicator} {alert['market_cap_sol_ath_percent_change']}%)`",
+        color=embed_color
+    )
+
+    # Add the token address as a code block
+    token_address = f"```{alert['pair']['token_address']}```"
+    embed.add_field(name="**Token Address**", value=token_address, inline=False)
+
+    embed.set_thumbnail(url=alert['pair']['token_image'])
+
+    # Update the original stats with percentage change
+    embed.add_field(
+        name="📣**Original**",
+        value=(
+            f"**Market Cap:** `{format_large_number(old_market_cap_usd)}`\n"
+            f"**Liquidity:** `{format_large_number(old_liquidity_usd)}`\n"
+            f"**Volume:** `{format_large_number(old_volume_usd)}`"
+        ),
+        inline=True
+    )
+
+    # Update the real-time stats with percentage change
+    embed.add_field(
+        name="⌚**Real Time**",
+        value=(
+            f"**Market Cap:** `{format_large_number(new_market_cap_usd)}` {market_cap_trend} `({market_cap_change})`\n"
+            f"**Liquidity:** `{format_large_number(new_liquidity_usd)}` {liquidity_trend} `({liquidity_change})`\n"
+            f"**Volume:** `{format_large_number(new_volume_usd)}` {volume_trend} `({volume_change})`"
+        ),
+        inline=True
+    )
+
+    quick_buy = (
+        f"**[GmGn](https://gmgn.ai/sol/token/Sef3AuWIF_{alert['pair']['token_address']})** ∙ "
+        f"**[Photon](https://photon-sol.tinyastro.io/en/r/@rodent0x/{alert['pair']['token_address']})** ∙ "
+        f"**[Bull](https://bullx.io/terminal?chainId=1399811149&address={alert['pair']['token_address']})** ∙ "
+        f"**[PepeB](https://t.me/pepeboost_sol04_bot?start=ref_01obi0_ca_{alert['pair']['token_address']})** ∙ "
+        f"**[Troj](https://t.me/hector_trojanbot?start=r-j3rrycr3dits-{alert['pair']['token_address']})** ∙ "
+        f"**[Fasol](https://t.me/fasol_robot?start=ref_rodent0x_ca_{alert['pair']['token_address']})**\n\n"
+    )
+    embed.add_field(name="**Quick Buy**", value=quick_buy, inline=False)
+
+    random_footer = random.choice(footer_messages)
+    embed.set_footer(text=random_footer)
+
+    return embed
 
 
 def get_seen_coins(guildname):
