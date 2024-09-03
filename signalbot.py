@@ -1580,7 +1580,10 @@ async def send_radar_signals(ctx, role=None):
                 f"**[Fasol](https://t.me/fasol_robot?start=ref_rodent0x_ca_{alert['pair']['token_address']})**\n\n"
             )
             embed.add_field(name="**Quick Buy**", value=quick_buy, inline=False)
-
+            
+            random_footer = random.choice(footer_messages)
+            embed.set_footer(text=random_footer)
+            
             # Check if the message for this token has already been sent
             if ctx.channel.id in sent_messages and alert['pair']['token_address'] in sent_messages[ctx.channel.id]:
                 message_id = sent_messages[ctx.channel.id][alert['pair']['token_address']]
