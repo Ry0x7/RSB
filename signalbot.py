@@ -1592,11 +1592,11 @@ async def send_radar_signals(ctx, role=None):
                     await message.edit(embeds=[embed])
                 except interactions.errors.NotFound:
                     # If the message was deleted or not found, send a new one
-                    message = await ctx.send(content=f"{role.mention}" if role else None, embeds=[embed])
+                    message = await ctx.send(content=f"📣**RADAR ALERT**📣 {role.mention}" if role else None, embeds=[embed])
                     sent_messages[ctx.channel.id][alert['pair']['token_address']] = message.id
             else:
                 # Send the message if it hasn't been sent before
-                message = await ctx.send(content=f"{role.mention}" if role else None, embeds=[embed])
+                message = await ctx.send(content=f"📣**RADAR ALERT**📣 {role.mention}" if role else None, embeds=[embed])
                 if ctx.channel.id not in sent_messages:
                     sent_messages[ctx.channel.id] = {}
                 sent_messages[ctx.channel.id][alert['pair']['token_address']] = message.id
