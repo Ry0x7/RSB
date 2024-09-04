@@ -1504,7 +1504,7 @@ async def send_radar_signals(ctx, role=None):
             return
 
         # Process multiple radar signals (0 to 3)
-        for index in range(min(8, len(radar_data['data']['recentRadarAlerts']))):
+        for index in range(min(6, len(radar_data['data']['recentRadarAlerts']))):
             alert = radar_data['data']['recentRadarAlerts'][index]
             token_address = alert['pair']['token_address']
 
