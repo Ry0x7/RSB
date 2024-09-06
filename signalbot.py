@@ -1393,7 +1393,7 @@ async def scrape_telegram_preview(ctx, role):
                 
 async def fetch_sol_price():
     """Fetch the current SOL price in USD from the CoinGecko API."""
-    sol_price_data = await fetch_data_waf_bypass2('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd')
+    sol_price_data = await fetch_data('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd')
     
     if sol_price_data and 'solana' in sol_price_data and 'usd' in sol_price_data['solana']:
         try:
