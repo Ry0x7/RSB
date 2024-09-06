@@ -1554,21 +1554,40 @@ def create_radar_embed(alert, sol_to_usd_rate):
     old_volume_usd = round(old_stats.get('volume_sol', 0) * sol_to_usd_rate, 2)
     new_volume_usd = round(new_stats.get('volume_sol', 0) * sol_to_usd_rate, 2)
 
+    old_trader_count = old_stats.get('traders', 0)
+    new_trader_count = new_stats.get('traders', 0)
+    
+    old_transaction_count = old_stats.get('transactions', 0)
+    new_transaction_count = new_stats.get('transactions', 0)
+    
+    
     # Calculate percentage changes and determine color
     market_cap_change, market_cap_trend = calculate_percentage_change(old_market_cap_usd, new_market_cap_usd)
     liquidity_change, liquidity_trend = calculate_percentage_change(old_liquidity_usd, new_liquidity_usd)
     volume_change, volume_trend = calculate_percentage_change(old_volume_usd, new_volume_usd)
-
+    trader_change = new_trader_count - old_trader_count
+    trader_trend = "🟢" if trader_change > 0 else "🔴" if trader_change < 0 else ""
+    transaction_change = new_transaction_count - old_transaction_count
+    transaction_trend = "🟢" if transaction_change > 0 else "🔴" if transaction_change < 0 else ""
+    
     # Add trend indicators for Market Cap ATH percentage change
     ath_percent_change = float(alert['market_cap_sol_ath_percent_change'])
-    ath_trend_indicator = "📈" if ath_percent_change > 0 else "📉" if ath_percent_change < 0 else ""
+    ath_trend_indicator = "🟩" if ath_percent_change > 0 else "🟥" if ath_percent_change < 0 else ""
 
     # Set embed color based on market cap change
     embed_color = 0x00ff00 if float(market_cap_change.strip('%')) > 0 else 0xff0000
 
+    protocol = alert.get('pair', {}).get('protocol', '')
+    if protocol == "Pump V1":
+        protocol_icon = "💊"
+    elif protocol == "Raydium V4":
+        protocol_icon = "⚡"
+    else:
+        protocol_icon = ""
+    
     # Create the embed
     embed = interactions.Embed(
-        title=f"**{alert['pair']['token_name']} ({alert['pair']['token_ticker']})**",
+        title=f"***{protocol_icon} {protocol}*** | **{alert['pair']['token_name']} ({alert['pair']['token_ticker']})**",
         description=f"**Market Cap ATH:** `{format_large_number(int(float(alert['market_cap_sol_ath'] * sol_to_usd_rate)))} ({ath_trend_indicator} {alert['market_cap_sol_ath_percent_change']}%)`",
         color=embed_color
     )
@@ -1585,7 +1604,9 @@ def create_radar_embed(alert, sol_to_usd_rate):
         value=(
             f"**Market Cap:** `{format_large_number(old_market_cap_usd)}`\n"
             f"**Liquidity:** `{format_large_number(old_liquidity_usd)}`\n"
-            f"**Volume:** `{format_large_number(old_volume_usd)}`"
+            f"**Volume:** `{format_large_number(old_volume_usd)}`\n"
+            f"**Traders:** `{old_trader_count}`\n"
+            f"**Transactions:** `{old_transaction_count}`"
         ),
         inline=True
     )
@@ -1596,13 +1617,15 @@ def create_radar_embed(alert, sol_to_usd_rate):
         value=(
             f"**Market Cap:** `{format_large_number(new_market_cap_usd)}` {market_cap_trend} `({market_cap_change})`\n"
             f"**Liquidity:** `{format_large_number(new_liquidity_usd)}` {liquidity_trend} `({liquidity_change})`\n"
-            f"**Volume:** `{format_large_number(new_volume_usd)}` {volume_trend} `({volume_change})`"
+            f"**Volume:** `{format_large_number(new_volume_usd)}` {volume_trend} `({volume_change})`\n"
+            f"**Traders:** `{new_trader_count}` {trader_trend} `({trader_change})`\n"
+            f"**Transactions:** `{new_transaction_count}` {transaction_trend} `({transaction_change})`"
         ),
         inline=True
     )
 
     quick_buy = (
-        f"**[GmGn](https://gmgn.ai/sol/token/Sef3AuWIF_{alert['pair']['token_address']})** ∙ "
+        f"\n\n\n**[GmGn](https://gmgn.ai/sol/token/Sef3AuWIF_{alert['pair']['token_address']})** ∙ "
         f"**[Photon](https://photon-sol.tinyastro.io/en/r/@rodent0x/{alert['pair']['token_address']})** ∙ "
         f"**[Bull](https://bullx.io/terminal?chainId=1399811149&address={alert['pair']['token_address']})** ∙ "
         f"**[PepeB](https://t.me/pepeboost_sol04_bot?start=ref_01obi0_ca_{alert['pair']['token_address']})** ∙ "
