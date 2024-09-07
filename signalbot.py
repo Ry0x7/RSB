@@ -12,18 +12,17 @@ import re
 import random
 from interactions import listen, Client
 from bs4 import BeautifulSoup
+import json
+import time
 import concurrent.futures
-from flask import Flask, jsonify
 import cloudscraper
 import json
-from threading import Thread
 
 dotenv.load_dotenv()
 
 # Initialize the Discord bot
 bot = Client(token=os.getenv('DISCORD_TOKEN'))
-# Initialize Flask web server
-app = Flask(__name__)
+
 # Define API URLs
 BASE_URL = 'https://gmgn.ai/defi/quotation/v1/rank/sol/pump'
 SEARCH_API_BASE_URL = 'https://frontend-api.pump.fun/'
@@ -54,22 +53,12 @@ sent_messages = {}
 volume_check = {}
 processed_message_ids = set()
 last_message_time = None
+top_buyers_cache = {}
+cache_timeout = 300  # Cache timeout in seconds (e.g., 5 minutes)
 
-# Flask route for checking the bot's status
-@app.route('/status', methods=['GET'])
-def status():
-    return jsonify({"status": "Bot is running", "tasks": list(running_tasks.keys())}), 200
+# Maximum number of concurrent tasks
+MAX_CONCURRENT_TASKS = 2
 
-# Flask route for custom monitoring or fetching data
-@app.route('/health', methods=['GET'])
-def health_check():
-    # You can add logic here to check bot health or MongoDB connection status
-    try:
-        mongo_client.admin.command('ping')
-        return jsonify({"status": "Healthy"}), 200
-    except Exception as e:
-        return jsonify({"status": "Unhealthy", "error": str(e)}), 500
-    
 # List of possible footers
 footer_messages = [
     "For business inquiries, DM @chakazzz 👑",
@@ -1393,7 +1382,7 @@ async def scrape_telegram_preview(ctx, role):
                 
 async def fetch_sol_price():
     """Fetch the current SOL price in USD from the CoinGecko API."""
-    sol_price_data = await fetch_data('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd')
+    sol_price_data = await fetch_data_waf_bypass2('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd')
     
     if sol_price_data and 'solana' in sol_price_data and 'usd' in sol_price_data['solana']:
         try:
@@ -1661,20 +1650,5 @@ def update_highest_mcap(address, current_mcap, guildname):
     logging.info(f"Updated highest_mcap for address {address} with value: {current_mcap}")
 
 
-# Function to start Flask in a separate thread
-def run_flask():
-    app.run(host='0.0.0.0', port=5000)
-
-# Function to start Flask in a separate thread
-def start_flask_thread():
-    flask_thread = Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-
-# Main entry point
-if __name__ == "__main__":
-    # Start Flask server in a separate thread
-    start_flask_thread()
-
-    # Start Discord bot
-    bot.start()
+# Start the bot
+bot.start()
