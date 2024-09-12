@@ -12,11 +12,14 @@ import re
 import random
 from interactions import listen, Client
 from bs4 import BeautifulSoup
+import http.client
 import json
+from urllib.parse import urlparse
 import time
+import io
+import gzip
+import base64
 import concurrent.futures
-import cloudscraper
-import json
 
 dotenv.load_dotenv()
 
@@ -82,63 +85,140 @@ status_messages = [
     "Want this bot in your server? DM @chakazzz 👑"
 ]
 
-# List of User-Agents to rotate
-USER_AGENTS = [
+useragents = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.104 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.89 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.88 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15",
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 14_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.1 Mobile/15E148 Safari/604.1",
-    "Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Mobile Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.101 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36",
+    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:85.0) Gecko/20100101 Firefox/85.0",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:84.0) Gecko/20100101 Firefox/84.0",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:83.0) Gecko/20100101 Firefox/83.0",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:82.0) Gecko/20100101 Firefox/82.0",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 14_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (iPad; CPU OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15A5341f Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Mobile Safari/537.36",
+    "Mozilla/5.0 (Linux; Android 9; SM-G960F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.90 Mobile Safari/537.36",
+    "Mozilla/5.0 (Linux; Android 8.0.0; SM-G950F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.101 Mobile Safari/537.36"
 ]
 
-# Additional headers
-HEADERS = [
-    {
-        "Accept-Language": "en-US,en;q=0.9",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-    },
-    {
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "X-Requested-With": "XMLHttpRequest",
-    },
-]
 
-async def fetch_data(url, retries=3, delay=3000):
-    """Fetch data using Cloudscraper with rotating User-Agents and headers."""
-    print(f"Fetching data from URL: {url}")
+main_proxy = "https://spczig9st1:9~QJmaHbtsnv73xbS8@gate.smartproxy.com:7000"
 
-    # Initialize cloudscraper
-    scraper = cloudscraper.create_scraper()
+# def fetch_ip(proxy_parsed, proxy_auth_encoded):
+#     """Fetch the current IP address using the proxy."""
+#     conn = http.client.HTTPSConnection(proxy_parsed.hostname, proxy_parsed.port)
+#     conn.set_tunnel("api.ipify.org", headers={"Proxy-Authorization": f"Basic {proxy_auth_encoded}"})
+#     conn.request("GET", "/")
+#     response = conn.getresponse()
+#     if response.status == 200:
+#         ip = response.read().decode('utf-8')
+#         logging.info(f"Current IP address: {ip}")
+#         return ip
+#     else:
+#         logging.error(f"Failed to fetch IP address: {response.status} {response.reason}")
+#     conn.close()
+#     return None
 
-    try:
-        for attempt in range(retries):
-            try:
-                # Rotate User-Agent and headers
-                user_agent = random.choice(USER_AGENTS)
-                headers = random.choice(HEADERS)
-                headers['User-Agent'] = user_agent
+def fetch_data_sync(url, retries=3, delay=3):
+    """Synchronous fetch data function with retries and delay."""
+    logging.info(f"Fetching data from URL: {url}")
+    parsed_url = urlparse(url)
+    
+    # Parse the main proxy URL
+    proxy_parsed = urlparse(main_proxy)
+    
+    # Encode proxy credentials
+    proxy_auth = f"{proxy_parsed.username}:{proxy_parsed.password}"
+    proxy_auth_encoded = base64.b64encode(proxy_auth.encode()).decode()
 
-                # Make the request with rotating headers
-                response = scraper.get(url, headers=headers)
+    # Check IP address before fetching data
+    # logging.info("Checking IP address before fetching data...")
+    # fetch_ip(proxy_parsed, proxy_auth_encoded)
 
-                if response.status_code == 200:
-                    data = json.loads(response.text)
-                    if data.get('code') == 0:
-                        return data  # Successfully retrieved the data
+    for attempt in range(retries):
+        try:
+            if parsed_url.netloc == "gmgn.ai":
+                logging.info("Connecting to proxy for gmgn.ai...")
+                conn = http.client.HTTPSConnection(proxy_parsed.hostname, proxy_parsed.port)
+                conn.set_tunnel("gmgn.ai", headers={"Proxy-Authorization": f"Basic {proxy_auth_encoded}"})
+                headers = {
+                    'User-Agent': random.choice(useragents),
+                    'Accept': 'application/json, text/plain, */*',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate, br, zstd',
+                    'Referer': 'https://gmgn.ai/meme?chain=sol',
+                    'Alt-Used': 'gmgn.ai',
+                    'Connection': 'keep-alive',
+                    'Sec-Fetch-Dest': 'empty',
+                    'Sec-Fetch-Mode': 'cors',
+                    'Sec-Fetch-Site': 'same-origin',
+                    'If-None-Match': 'W/a414-l8/w3z1JNxalxPb2NpnpiXw5qjM',
+                    'TE': 'trailers'
+                }
+                conn.request("GET", f"{parsed_url.path}?{parsed_url.query}", '', headers)
+                logging.info("Request sent to gmgn.ai through proxy.")
+                response = conn.getresponse()
+                logging.info(f"Received response with status code: {response.status}")
+                if response.status == 200:
+                    data = response.read()
+                    if response.getheader('Content-Encoding') == 'gzip':
+                        decompressed_data = gzip.GzipFile(fileobj=io.BytesIO(data)).read()
+                        decoded_data = decompressed_data.decode('utf-8')
                     else:
-                        print(f"[ERROR] Invalid response code from API: {data}")
-                        raise Exception('API returned an error code')
+                        decoded_data = data.decode('utf-8')
+                    return json.loads(decoded_data)
+                elif response.status == 403:
+                    logging.warning(f"Received 403 Forbidden. Retrying after delay... ({attempt + 1}/{retries})")
+                    time.sleep(delay)  # Add delay before retrying
                 else:
-                    print(f"[ERROR] HTTP Error: {response.status_code} ")
+                    logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
+            else:
+                logging.info(f"Connecting to proxy for {parsed_url.netloc}...")
+                conn = http.client.HTTPSConnection(proxy_parsed.hostname, proxy_parsed.port)
+                conn.set_tunnel(parsed_url.netloc, headers={"Proxy-Authorization": f"Basic {proxy_auth_encoded}"})
+                conn.request("GET", parsed_url.path + "?" + parsed_url.query)
+                logging.info(f"Request sent to {parsed_url.netloc} through proxy.")
+                response = conn.getresponse()
+                logging.info(f"Received response with status code: {response.status}")
+                if response.status == 200:
+                    data = response.read()
+                    return json.loads(data.decode('utf-8'))
+                elif response.status == 403:
+                    logging.warning(f"Received 403 Forbidden. Retrying after delay... ({attempt + 1}/{retries})")
+                    time.sleep(delay)  # Add delay before retrying
+                else:
+                    logging.error(f"Error fetching data from {url}: {response.status} {response.reason}")
+        except http.client.RemoteDisconnected as e:
+            logging.error(f"RemoteDisconnected occurred: {e}. Retrying after delay... ({attempt + 1}/{retries})")
+            time.sleep(delay)  # Add delay before retrying
+        except Exception as e:
+            logging.error(f"Exception occurred while connecting to {parsed_url.netloc}: {e}", exc_info=True)
+            time.sleep(delay)  # Add delay before retrying
+        finally:
+            conn.close()
+    
+    logging.error(f"Failed to fetch data from {url} after {retries} attempts.")
+    return None
 
-            except Exception as e:
-                print(f"[ERROR] Error fetching data from {url} on attempt {attempt + 1}: {str(e)}")
-                await asyncio.sleep(delay / 1000)  # Delay before retrying
-
-        print(f"[ERROR] Failed to fetch data from {url} after {retries} attempts.")
-    except Exception as e:
-        logging.error(f"Error using Cloudscraper: {str(e)}")
-        return None
+async def fetch_data(url, retries=3, delay=3):
+    """Asynchronously fetch data by running the sync fetch in a separate thread."""
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        result = await loop.run_in_executor(pool, fetch_data_sync, url, retries, delay)
+    return result
 
 async def fetch_data_waf_bypass2(url, retries=3, timeout=10):
     """Fetch data from the specified URL with WAF bypass, retry logic, and timeout."""
@@ -297,16 +377,24 @@ async def fetch_wallet_counts(address):
         logging.error(f"No valid data returned for wallet counts of address {address}")
     return None
 
-async def fetch_top_buyers(address):
-    """Fetch top buyers data for the specified address."""
+async def fetch_top_buyers(address, use_cache=True):
+    """Fetch top buyers data for the specified address, with optional caching."""
+    if use_cache and address in top_buyers_cache:
+        logging.info(f"Using cached top buyers data for address: {address}")
+        return top_buyers_cache[address]
+
     url = f"{TOP_BUYERS_API_BASE_URL}{address}"
-    data = await fetch_data(url)
     logging.info(f"Fetching top buyers data for address: {address}")
-    if data and data['code'] == 0:
+    
+    data = await fetch_data(url)
+
+    if data and 'code' in data and data['code'] == 0:
+        if use_cache:
+            top_buyers_cache[address] = data['data']  # Cache the data
         return data['data']
     else:
         logging.error(f"No valid data returned for top buyers of address {address}")
-    return None
+        return None
 
 
 async def fetch_bubblemap_data(address, retries=3, timeout=10):
@@ -424,11 +512,10 @@ def get_socials(social_links):
     
     return " **∙** ".join(links)
 
-async def format_embed(item, updated=False, trend="", percentage_change="", trend_indicator=""):
+async def format_embed(item,):
     """Format the embed message for the coin."""
     embed_title = f"🪙 {item['name']} (${item['symbol']})"
-    trendcoin = f"**{trend}** | `{percentage_change}{trend_indicator}`" if updated else ""
-    embed = interactions.Embed(title=trendcoin, color=0x00ff00)
+    embed = interactions.Embed(title="", color=0x00ff00)
     embed.set_author(name=embed_title)
     logo_url = item['logo']
     if 'ipfs/' in item['logo']:
@@ -490,7 +577,6 @@ async def generate_embed_fields(item, social_links, top_buyers, connected_wallet
     field_value = (
         f"💎 **MCAP:** `${market_cap}` 🕰️ **Age:** `{created_time_since}`\n"
         f"📊 **1m-Vol:** `${volume_1m}`\n"
-        f"👁️ **Called At:** `${format_large_number(seen_coins[(item['name'], item['symbol'])]['called_mcap'])}`\n"
         f"🏆 **Top10**: `{top_10_holder_rate:.2f}%` 👥 **Holders:** `{holder_count}`\n"
         f"🫅 **Dev SolBal:** `{creator_balance}`\n"
         f"\n\n\n"
@@ -534,7 +620,7 @@ async def generate_embed_fields(item, social_links, top_buyers, connected_wallet
         "**CTO TG**": telegram_field_value,
     }
 
-async def generate_embed_ca(item, socials, connected_wallets, called_by, topbuyers):
+async def generate_embed_ca(item, socials, connected_wallets, called_by):
     try:
         # Prepare the data for the embed
         coin_info = f"```{item.get('address', 'N/A')}```\n"
@@ -562,12 +648,6 @@ async def generate_embed_ca(item, socials, connected_wallets, called_by, topbuye
             
         holder_rugged_num = item.get('holder_rugged_num', 0.0)
         holder_token_num = item.get('holder_token_num', 0.0)
-        
-        holders = topbuyers.get('holders', {})
-        fresh_wallet_count = sum('fresh_wallet' in holder['tags'] for holder in holders.get('holderInfo', []))
-        sniper_count = sum('sniper' in holder['maker_token_tags'] for holder in holders.get('holderInfo', []))
-        rat_trader_count = sum('rat_trader' in holder['maker_token_tags'] for holder in holders.get('holderInfo', []))
-        smart_trader_count = sum('pump_smart' in holder['tags'] for holder in holders.get('holderInfo', []))
         
         # Fetch and safely handle telegram links
         telegram_links = await fetch_telegram_links(item.get('address', 'N/A'), item.get('symbol', 'N/A'), item.get('name', 'N/A'))
@@ -616,10 +696,6 @@ async def generate_embed_ca(item, socials, connected_wallets, called_by, topbuye
             f"💰 **Profit/Loss:** `{profit_percentage}`\n\n"
         )
         other_info = (
-            f"🍼 Fresh Wallets: `{fresh_wallet_count}`\n"
-            f"🎯 Snipers: `{sniper_count}`\n"
-            f"🐀 Rats: `{rat_trader_count}`\n"
-            f"🧠 Smart Traders: `{smart_trader_count}`\n"
             f"🔗 Connected Wallets: `{connected_wallets}` | {bubblemap_check}\n"
             f"⚡ Dex paid?: {'✅' if dex_paid else '❌'} | {dex_status_check} \n"
             f"🧑‍💻 {dev_status}\n"
@@ -757,8 +833,9 @@ async def generate_simple_embed(item, socials, connected_wallets, topbuyers, rol
         logging.error(f"Error in generate_simple_embed: {e}")
         return None  # Handle the error gracefully and return None
         
+
 async def send_or_update_embed(channel, item, task_type, role=None):
-    """Send or update the embed message for the coin."""
+    """Send the embed message for the coin without updating it if already sent."""
     guildname = channel.guild.name
     coins_collection = db[f'coins_{guildname}']
 
@@ -768,39 +845,27 @@ async def send_or_update_embed(channel, item, task_type, role=None):
         volume_check[channel_id] = {"soaring": {}, "new": {}, "completing": {}}
     
     sent_messages_task = sent_messages[channel_id][task_type]
-    updated = item['address'] in sent_messages_task
-    trend, percentage_change, trend_indicator = "", "", ""
     
-    if updated:
-        previous_mcap = seen_coins[(item['name'], item['symbol'])]['called_mcap']
-        current_mcap = int(float(item['usd_market_cap']))
-        percentage_change, trend_indicator = calculate_percentage_change(previous_mcap, current_mcap)
-        trend = "Blasting! 🚀" if current_mcap > previous_mcap else "Dipping! 💥" if current_mcap < previous_mcap else ""
-        seen_coins[(item['name'], item['symbol'])]['market_cap'] = current_mcap
-    embed = await format_embed(item, updated, trend, percentage_change, trend_indicator)
+    # Check if the embed has already been sent
+    if item['address'] in sent_messages_task:
+        logging.info(f"Skipping {item['name']} ({item['symbol']}) as it has already been sent.")
+        return
+    
+    embed = await format_embed(item)
     if not embed:
         return
+    
     try:
-        if updated:
-            message_id = sent_messages_task[item['address']]
-            try:
-                message = await channel.fetch_message(message_id)
-                if message:
-                    await message.edit(embeds=[embed])
-                else:
-                    del sent_messages_task[item['address']]
-                    message = await channel.send(f"{role.mention if role else ''} {item['address']}", embeds=[embed])
-                    sent_messages_task[item['address']] = message.id
-            except interactions.errors.NotFound:
-                del sent_messages_task[item['address']]
-                message = await channel.send(f"{role.mention if role else ''} {item['address']}", embeds=[embed])
-                sent_messages_task[item['address']] = message.id
+        # Send the message only if it hasn't been sent already
+        if role:
+            message = await channel.send(f"{role.mention} {item['address']}", embeds=[embed])
         else:
-            message = await channel.send(f"{role.mention if role else ''} {item['address']}", embeds=[embed])
-            sent_messages_task[item['address']] = message.id
-
+            message = await channel.send(f"{item['address']}", embeds=[embed])
+        sent_messages_task[item['address']] = message.id
     except Exception as e:
         logging.error(f"Error in send_or_update_embed: {e}")
+
+
 
 async def send_coins(channel, task_type, ctx, role=None):
     global last_data
@@ -829,7 +894,7 @@ async def send_coins(channel, task_type, ctx, role=None):
             'new_creation': 'true',
             'max_marketcap': '9000',
             'max_created': '10m',
-            'min_holder_count': '4',
+            'min_holder_count': '3',
             'min_volume': '1000',
         },
         "completing": {
@@ -855,44 +920,52 @@ async def send_coins(channel, task_type, ctx, role=None):
                 if item['symbol'] in seen_tickers and seen_tickers[item['symbol']] != item['address']:
                     continue
 
+                # Conditional filtering based on task_type
                 volume_1m = item.get('volume_1m')
                 if volume_1m is None:
-                    continue
+                    continue  # Skip this item if volume_1m is None
                 
                 volume_1m = int(float(volume_1m))
                 
-                if task_type == "new" and volume_1m < 2500:
-                    continue
+                if task_type == "new" and volume_1m < 3500:
+                    continue  # Skip if volume is below 3500 for new coins
                 elif task_type == "soaring" and volume_1m < 5000:
-                    continue
-                elif task_type == "completing" and volume_1m < 1000:
-                    continue
-
-                creator_balance_rate = item.get('creator_balance_rate')
-                if creator_balance_rate is not None and float(creator_balance_rate) > 0.1:
-                    logging.info(f"Token {item['symbol']} has more than 0.1% creator balance. Skipping.")
-                    continue
+                    continue  # Skip if volume is below 5000 for soaring coins
+                elif task_type == "completing" and volume_1m < 2000:
+                    continue  # Skip if volume is below 2000 for completing coins
                 
-                top_buyers = await fetch_top_buyers(item['address'])
+                # Fetch top buyers data only for the /new task using the cache
+                if task_type == "new" or "soaring":
+                    if item['address'] in top_buyers_cache:
+                        top_buyers = top_buyers_cache[item['address']]
+                    else:
+                        top_buyers = await fetch_top_buyers(item['address'])
+                        top_buyers_cache[item['address']] = top_buyers
 
-                holders = top_buyers.get('holders', {})
-                if check_dev_sniper_tags(holders) or check_sniper_count(holders):
-                    logging.info(f"Token {item['address']} has dev_team and sniper tags in a single wallet or too many snipers. Skipping.")
-                    continue
+                    # Check for dev_team and sniper tags only for the /new task
+                    if top_buyers is None:
+                        logging.info(f"Token {item['address']} has dev_team wallets or too many snipers. Skipping.")
+                        continue
 
+                    holders = top_buyers.get('holders', {})
+                    if check_dev_sniper_tags(holders) or check_sniper_count(holders):
+                        logging.info(f"Token {item['address']} has dev_team and sniper tags in a single wallet or too many snipers. Skipping.")
+                        continue
+
+                # Record the coin as seen and update the seen_coins dictionary
                 called_by = ctx.bot.user.username
                 usd_market_cap = item.get('usd_market_cap')
+                
                 if usd_market_cap is None:
-                    continue
+                    continue  # Skip this item if usd_market_cap is None
                 
                 usd_market_cap = int(float(usd_market_cap))
-
+                
                 if coin_key not in seen_coins:
                     seen_coins[coin_key] = {
                         'address': item['address'],
                         'called_mcap': usd_market_cap,
                         'market_cap': usd_market_cap,
-                        'highest_mcap': usd_market_cap,  # Initialize highest_mcap with the called market cap
                         'called_at': datetime.now(tz=timezone.utc),
                         'called_by': called_by
                     }
@@ -907,19 +980,10 @@ async def send_coins(channel, task_type, ctx, role=None):
                     )
                 else:
                     seen_coins[coin_key]['market_cap'] = usd_market_cap
+                    # Only update 'called_by' if it's not already set
                     existing_called_by = seen_coins[coin_key].get('called_by')
                     if not existing_called_by:
                         seen_coins[coin_key]['called_by'] = called_by
-
-                    # Check if current market cap exceeds the highest market cap
-                    highest_mcap = seen_coins[coin_key].get('highest_mcap', seen_coins[coin_key]['called_mcap'])
-                    current_market_cap = int(float(item['usd_market_cap']))
-                    
-                    if current_market_cap > highest_mcap:
-                        logging.info(f"New highest market cap detected for {item['symbol']}. Updating highest_mcap.")
-                        seen_coins[coin_key]['highest_mcap'] = current_market_cap
-                        update_highest_mcap(item['address'], current_market_cap, guildname)
-
                     update_seen_coin(
                         item['name'], item['symbol'], item['address'],
                         seen_coins[coin_key]['called_mcap'],
@@ -929,12 +993,11 @@ async def send_coins(channel, task_type, ctx, role=None):
                         guildname
                     )
 
+                # Send the embed for the coin
                 await send_or_update_embed(channel, item, task_type, role)
 
     except Exception as e:
         logging.error(f"Error in send_coins: {e}", exc_info=True)
-
-
 
         
 def build_query_url(base_url, params):
@@ -1218,7 +1281,6 @@ async def ca(ctx, address: str):
             # Fetch data from synchronous functions or properly await asynchronous ones
             connected_wallets = count_connected_wallets(await fetch_bubblemap_data(item['address']))
             socials = get_socials(item.get('social_links', {}))
-            topbuyers = await fetch_top_buyers(item['address'])
 
             guildname = ctx.guild.name
             coins_collection = db[f'coins_{guildname}']
@@ -1268,7 +1330,7 @@ async def ca(ctx, address: str):
                 update_highest_mcap(item['address'], current_market_cap, guildname)
                 seen_coins[coin_key]['highest_mcap'] = current_market_cap
 
-            embed = await generate_embed_ca(item, socials, connected_wallets, called_by, topbuyers)
+            embed = await generate_embed_ca(item, socials, connected_wallets, called_by)
             if embed:
                 await ctx.send(f'{item["address"]}', embeds=[embed])
             else:
