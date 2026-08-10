@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="RodentSignalBot portfolio landing page for a Solana memecoin Discord signal bot.">
+  <title>RodentSignalBot | Solana Memecoin Signal Bot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <nav class="nav" aria-label="Primary navigation">
+        <a class="brand" href="#hero-title">🐀 RodentSignalBot</a>
+        <div class="nav-actions">
+          <a class="nav-link" href="#demo">Demo</a>
+          <a class="nav-link" href="#setup">Setup</a>
+          <a class="nav-link" href="README.md" aria-label="Read the project README">README</a>
+        </div>
+      </nav>
+
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">Discord automation • Solana analytics • Portfolio project</p>
+          <h1 id="hero-title">Real-time memecoin signals, formatted for fast Discord decisions.</h1>
+          <p class="hero-text">
+            RodentSignalBot monitors Solana token activity, filters high-signal market data, and posts readable
+            Discord embeds with market cap, holders, liquidity, social links, and quick research shortcuts.
+          </p>
+          <div class="actions">
+            <a class="button primary" href="#demo">See the preview</a>
+            <a class="button secondary" href="#features">Explore features</a>
+          </div>
+          <ul class="stat-strip" aria-label="Project highlights">
+            <li><strong>5</strong><span>Feed modes</span></li>
+            <li><strong>7+</strong><span>Data sources</span></li>
+            <li><strong>24/7</strong><span>Async loops</span></li>
+          </ul>
+        </div>
+
+        <aside class="signal-card" aria-label="Example signal card">
+          <div class="card-header">
+            <span class="pulse"></span>
+            <span>Live token signal</span>
+          </div>
+          <h2>$RODENT / SOL</h2>
+          <dl class="metrics">
+            <div><dt>Market cap</dt><dd>$148.2K</dd></div>
+            <div><dt>Liquidity</dt><dd>$31.8K</dd></div>
+            <div><dt>Holders</dt><dd>1,204</dd></div>
+            <div><dt>Volume 24h</dt><dd>$412K</dd></div>
+          </dl>
+          <p class="card-note">Top buyers, dev status, DEX paid checks, and social links are bundled into one alert.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section id="features" class="section" aria-labelledby="features-title">
+      <p class="eyebrow">What it does</p>
+      <h2 id="features-title">Built to turn noisy token feeds into actionable alerts.</h2>
+      <div class="feature-grid">
+        <article>
+          <span class="feature-icon">📡</span>
+          <h3>Continuous monitors</h3>
+          <p>Tracks new listings, soaring tokens, bonding-curve candidates, DEX paid feeds, and radar alerts.</p>
+        </article>
+        <article>
+          <span class="feature-icon">🧾</span>
+          <h3>Rich Discord embeds</h3>
+          <p>Formats market cap, age, volume, holders, wallet behavior, developer status, and social links.</p>
+        </article>
+        <article>
+          <span class="feature-icon">🧠</span>
+          <h3>Persistence & context</h3>
+          <p>Stores seen tokens in MongoDB to compare called market caps against later performance.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="demo" class="section demo" aria-labelledby="demo-title">
+      <div class="demo-copy">
+        <p class="eyebrow">Preview</p>
+        <h2 id="demo-title">A simple demo of what appears in Discord.</h2>
+        <p>
+          This static preview shows the alert flow without requiring visitors to run the bot or connect Discord.
+          It is designed for GitHub Pages portfolio browsing.
+        </p>
+      </div>
+      <div class="discord-window" aria-label="Static Discord alert demo">
+        <div class="window-bar">
+          <span></span><span></span><span></span>
+          <p># solana-signals</p>
+        </div>
+        <div class="message-row">
+          <div class="avatar">🐀</div>
+          <div class="message-content">
+            <div class="message-meta"><strong>RodentSignalBot</strong><span>Today at 14:11</span></div>
+            <div class="embed-preview">
+              <div class="embed-accent"></div>
+              <div class="embed-body">
+                <h3>🚀 New Soaring Signal: RODENT</h3>
+                <code>So1anaTokenAddressPreview111111111111111111</code>
+                <div class="embed-grid">
+                  <p><span>📈 Market Cap</span><strong>$148,200</strong></p>
+                  <p><span>💧 Liquidity</span><strong>$31,800</strong></p>
+                  <p><span>👥 Holders</span><strong>1,204</strong></p>
+                  <p><span>🔄 24h Volume</span><strong>$412,000</strong></p>
+                </div>
+                <div class="checks">
+                  <span>✅ DEX paid</span>
+                  <span>✅ Dev sold</span>
+                  <span>🫂 CTO: No</span>
+                </div>
+                <p class="quick-links">Photon · BullX · PepeBoost · Trojan · Bubblemaps · DEX Check</p>
+              </div>
+            </div>
+            <div class="command-preview"><span>/ca</span> fetch token details by address</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="setup" class="section setup" aria-labelledby="setup-title">
+      <div>
+        <p class="eyebrow">Tech stack</p>
+        <h2 id="setup-title">Python bot with async APIs and MongoDB storage.</h2>
+        <p>
+          The project uses Python, discord-py-interactions, aiohttp, MongoDB, BeautifulSoup, and several token
+          data endpoints to automate discovery workflows for Discord communities.
+        </p>
+      </div>
+      <pre><code>python -m venv .venv
+pip install -r requirements.txt
+python signalbot.py</code></pre>
+    </section>
+  </main>
+
+  <footer>
+    <p>For informational and portfolio purposes only. Not financial advice.</p>
+  </footer>
+</body>
+</html>

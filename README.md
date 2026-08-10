@@ -153,3 +153,13 @@ Stored data includes:
 ## Disclaimer
 
 This software is for informational/automation purposes only and is not financial advice. Always do your own research before trading.
+
+## Portfolio Landing Page
+
+This repository includes a simple static landing page for GitHub Pages:
+
+- `index.html`: Portfolio-style project overview with a static Discord alert preview/demo.
+- `styles.css`: Responsive dark theme styling for the hero, feature cards, and demo preview.
+- `.nojekyll`: Tells GitHub Pages to publish the static files as-is.
+
+To publish it, enable GitHub Pages in the repository settings and select the current branch with the repository root as the Pages source.
