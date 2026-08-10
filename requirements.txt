@@ -55,7 +55,7 @@ pillow==10.4.0
 platformdirs==4.2.2
 playwright==1.46.0
 pyaes==1.6.1
-pyasn1==0.6.0
+pyasn1==0.6.4
 pycparser==2.22
 pyee==11.1.0
 pymongo==4.8.0
