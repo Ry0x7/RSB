@@ -88,6 +88,6 @@ watchdog==4.0.1
 wcwidth==0.2.13
 websocket-client==1.8.0
 websockets==13.0.1
-Werkzeug==3.0.4
+Werkzeug==3.1.9
 wsproto==1.2.0
 yarl==1.9.4
