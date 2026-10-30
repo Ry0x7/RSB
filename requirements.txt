@@ -12,7 +12,7 @@ blinker==1.8.2
 Brotli==1.1.0
 bs4==0.0.2
 cattrs==23.2.3
-certifi==2024.7.4
+certifi==2026.10.18
 cffi==1.17.1
 charset-normalizer==3.3.2
 click==8.1.7
